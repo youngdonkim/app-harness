@@ -1,0 +1,142 @@
+# frozen_string_literal: false
+# iOS 쪽 flavor(dev·prod) 설정을 만들고 맞춥니다. 여러 번 돌려도 같은 결과입니다.
+#
+# 돌리기(저장소 최상위 폴더에서):
+#   ruby tool/ios_flavors.rb [패키지 이름] [앱 이름]
+#   예) ruby tool/ios_flavors.rb app.example 예시앱
+#
+# 하는 일
+# 1. 빌드 설정 여섯 개(Debug-dev·Profile-dev·Release-dev·Debug-prod·Profile-prod·Release-prod)를
+#    기존 Debug·Profile·Release를 본떠 만듭니다. 기존 셋은 그대로 둡니다.
+# 2. 각 빌드 설정에 번들 ID(개발용은 끝에 .dev)와 홈 화면 이름(개발용은 「[앱 이름] 개발」)을 넣고,
+#    Info.plist의 표시 이름을 그 값(APP_DISPLAY_NAME)으로 바꿉니다.
+# 3. 빌드 설정마다 ios/Flutter/<설정>.xcconfig를 만들어 연결합니다. CocoaPods 설정과, 목업 캔버스로
+#    빌드할 때만 아이패드를 켜는 DeviceFamily.xcconfig(목업 캔버스 틀)를 include합니다 — 둘 다 없으면 건너뜁니다.
+# 4. Xcode scheme 「dev」·「prod」를 Runner scheme을 본떠 만듭니다.
+#    Flutter는 --flavor dev일 때 scheme dev와 빌드 설정 *-dev를 씁니다.
+# 5. 빌드 단계 「Firebase 설정 파일 복사」를 넣습니다 — ios/config/<flavor>/GoogleService-Info.plist를
+#    앱에 넣습니다. FlutterFire CLI가 넣는 같은 일의 빌드 단계가 있으면 지웁니다(둘이 겹치지 않게).
+# 6. ios/Podfile이 있으면 새 빌드 설정을 Debug·Release 중 어느 쪽으로 다룰지 적어 줍니다.
+#
+# 필요한 것: xcodeproj gem(FlutterFire CLI도 씁니다). 없으면 `gem install xcodeproj`.
+
+require 'xcodeproj'
+require 'fileutils'
+
+FLAVORS = { 'dev' => { suffix: '.dev', name_suffix: ' 개발' }, 'prod' => { suffix: '', name_suffix: '' } }.freeze
+BASES = { 'Debug' => :debug, 'Profile' => :release, 'Release' => :release }.freeze
+COPY_PHASE = 'Firebase 설정 파일 복사'.freeze
+FLUTTERFIRE_PHASE = 'FlutterFire: "flutterfire bundle-service-file"'.freeze
+
+Encoding.default_external = Encoding::UTF_8
+bundle_id, app_name = ARGV.map { |a| a.dup.force_encoding(Encoding::UTF_8) }
+abort 'usage: ruby tool/ios_flavors.rb [패키지 이름] [앱 이름]' if bundle_id.nil? || app_name.nil?
+abort 'ios/Runner.xcodeproj가 없습니다 — 저장소 최상위 폴더에서 돌리세요' unless File.directory?('ios/Runner.xcodeproj')
+
+project = Xcodeproj::Project.open('ios/Runner.xcodeproj')
+runner = project.targets.find { |t| t.name == 'Runner' } or abort 'Runner 타깃이 없습니다'
+flutter_group = project.main_group['Flutter'] or abort 'Flutter 그룹이 없습니다'
+
+def copy_settings(from, to)
+  to.build_settings = Marshal.load(Marshal.dump(from.build_settings))
+end
+
+# 기존 설정(Debug·Release·Profile)에도 표시 이름을 넣어, flavor 없이 빌드해도 Info.plist가 비지 않게 합니다.
+runner.build_configurations.each do |c|
+  c.build_settings['APP_DISPLAY_NAME'] ||= app_name if BASES.key?(c.name)
+end
+
+BASES.each do |base, type|
+  FLAVORS.each do |flavor, f|
+    name = "#{base}-#{flavor}"
+
+    # 프로젝트 수준
+    proj_base = project.build_configuration_list[base] or abort "프로젝트에 #{base} 빌드 설정이 없습니다"
+    proj_cfg = project.build_configuration_list[name] || project.add_build_configuration(name, type)
+    copy_settings(proj_base, proj_cfg)
+
+    # 타깃 수준(Runner·RunnerTests 등 모든 타깃)
+    project.targets.each do |target|
+      t_base = target.build_configuration_list[base] or next
+      t_cfg = target.build_configuration_list[name]
+      unless t_cfg
+        t_cfg = project.new(Xcodeproj::Project::Object::XCBuildConfiguration)
+        t_cfg.name = name
+        target.build_configuration_list.build_configurations << t_cfg
+      end
+      copy_settings(t_base, t_cfg)
+      t_cfg.base_configuration_reference = t_base.base_configuration_reference
+
+      next unless target == runner
+
+      xcconfig = "ios/Flutter/#{name}.xcconfig"
+      File.write(xcconfig, <<~XC)
+        // tool/ios_flavors.rb가 만든 파일 — 빌드 설정 #{name}
+        #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.#{name.downcase}.xcconfig"
+        #include "Generated.xcconfig"
+        #include? "DeviceFamily.xcconfig"
+      XC
+      # Flutter 그룹은 폴더 경로가 없어서, 기존 Debug.xcconfig처럼 경로에 Flutter/를 붙입니다.
+      ref = flutter_group.files.find { |r| r.path.to_s.end_with?("#{name}.xcconfig") } ||
+            flutter_group.new_reference("Flutter/#{name}.xcconfig")
+      ref.name = "#{name}.xcconfig"
+      ref.path = "Flutter/#{name}.xcconfig"
+      ref.source_tree = '<group>'
+      t_cfg.base_configuration_reference = ref
+      t_cfg.build_settings['PRODUCT_BUNDLE_IDENTIFIER'] = "#{bundle_id}#{f[:suffix]}"
+      t_cfg.build_settings['APP_DISPLAY_NAME'] = "#{app_name}#{f[:name_suffix]}"
+    end
+  end
+end
+
+# 빌드 단계: Firebase 설정 파일 복사
+runner.shell_script_build_phases.select { |p| p.name == FLUTTERFIRE_PHASE }.each(&:remove_from_project)
+phase = runner.shell_script_build_phases.find { |p| p.name == COPY_PHASE } || runner.new_shell_script_build_phase(COPY_PHASE)
+phase.shell_script = <<~'SH'
+  # tool/ios_flavors.rb가 넣은 단계 — 빌드 설정 이름 끝(-dev·-prod)으로 flavor를 고르고
+  # ios/config/<flavor>/GoogleService-Info.plist를 앱 안에 넣습니다.
+  case "${CONFIGURATION}" in
+    *-dev) FLAVOR=dev ;;
+    *-prod) FLAVOR=prod ;;
+    *) echo "flavor 없는 빌드 설정(${CONFIGURATION}) — Firebase 설정 파일을 넣지 않습니다"; exit 0 ;;
+  esac
+  SRC="${PROJECT_DIR}/config/${FLAVOR}/GoogleService-Info.plist"
+  if [ ! -f "${SRC}" ]; then
+    if [ -f "${PROJECT_DIR}/../lib/core/firebase/firebase_options_${FLAVOR}.dart" ]; then
+      echo "error: ${SRC} 없음 — Firebase를 붙인 앱인데 iOS 설정 파일이 없습니다"
+      exit 1
+    fi
+    echo "Firebase를 붙이기 전이라 설정 파일 복사를 건너뜁니다"
+    exit 0
+  fi
+  cp "${SRC}" "${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/GoogleService-Info.plist"
+SH
+phase.show_env_vars_in_log = '0'
+project.save
+
+# Info.plist 표시 이름 → 빌드 설정 값
+plist = 'ios/Runner/Info.plist'
+text = File.read(plist)
+text = text.sub(%r{(<key>CFBundleDisplayName</key>\s*<string>)[^<]*(</string>)}, '\1$(APP_DISPLAY_NAME)\2')
+File.write(plist, text)
+
+# scheme dev·prod
+schemes = 'ios/Runner.xcodeproj/xcshareddata/xcschemes'
+runner_scheme = File.read(File.join(schemes, 'Runner.xcscheme'))
+FLAVORS.each_key do |flavor|
+  s = runner_scheme.gsub(/buildConfiguration = "(Debug|Profile|Release)"/) { %(buildConfiguration = "#{Regexp.last_match(1)}-#{flavor}") }
+  File.write(File.join(schemes, "#{flavor}.xcscheme"), s)
+end
+
+# Podfile(CocoaPods를 쓰는 경우에만)
+podfile = 'ios/Podfile'
+if File.exist?(podfile)
+  pod = File.read(podfile)
+  entries = BASES.flat_map { |b, t| FLAVORS.keys.map { |fl| "'#{b}-#{fl}' => :#{t}" } }
+  pod = pod.sub(/project 'Runner', \{[^}]*\}/m) do
+    "project 'Runner', {\n  'Debug' => :debug,\n  'Profile' => :release,\n  'Release' => :release,\n  " + entries.join(",\n  ") + ",\n}"
+  end
+  File.write(podfile, pod)
+end
+
+puts "iOS flavor 설정 완료 — scheme: #{FLAVORS.keys.join(', ')} / 번들 ID: #{FLAVORS.map { |fl, f| "#{fl}=#{bundle_id}#{f[:suffix]}" }.join(', ')}"

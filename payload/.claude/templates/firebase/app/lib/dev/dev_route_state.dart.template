@@ -1,0 +1,22 @@
+import 'package:flutter_riverpod/misc.dart' show Override;
+
+import '../app/current_location.dart';
+import '../core/dev_state/dev_state.dart';
+
+/// 개발용 앱에서 주소의 질의로 상태 흉내를 켭니다.
+///
+/// `/meetings?state=empty`로 열면 저장·조회 코드가 빈 결과를 돌려주고,
+/// `?as=guest`면 「로그인 전」으로 답합니다 — 화면 목록·상태 표의 `?state=`
+/// 표기가 개발용 앱에서도 그대로 통합니다. `main_dev.dart`만 넘깁니다.
+/// 실서비스 진입점은 넘기지 않으므로 상태 흉내가 늘 꺼져 있습니다.
+final devRouteStateOverrides = <Override>[
+  devStateProvider.overrideWith(
+    (ref) => DevState.parse(
+      ref.watch(currentLocationProvider).queryParameters['state'],
+    ),
+  ),
+  devGuestProvider.overrideWith(
+    (ref) =>
+        ref.watch(currentLocationProvider).queryParameters['as'] == 'guest',
+  ),
+];

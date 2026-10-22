@@ -1,0 +1,67 @@
+// 목업 캔버스 미리보기 그림(골든 그림) — 캔버스의 창마다 한 장씩 찍어 test/goldens/canvas/<창 열쇠>.png로 둔다.
+//
+// 캔버스와 같은 창 목록(buildFrames)·같은 폰 틀(CanvasPhone)·같은 설정(main_canvas.dart의 canvasConfig)으로 찍는다.
+// 그래서 같은 가짜 저장소·같은 상태 흉내·같은 폰 크기·같은 안전 영역이 그림에 들어간다.
+// 찍은 그림은 ① 캔버스가 멀리서 보여 주는 그림(코멘트 서버의 /shots/), ② 겉모습이 뜻하지 않게 바뀌었는지 보는 비교 기준,
+// ③ 스토어 스크린샷 초안의 재료로 쓴다. AI가 화면이 맞는지 판정하는 수단이 아니다 — 화면 판정은 사람 몫이다.
+//
+// 이 맥에서만 돌린다. 운영체제마다 글자 그림이 달라 CI는 golden 태그를 빼고 돈다.
+//   그림 새로 찍기:  flutter test --tags golden --update-goldens test/goldens/canvas_golden_test.dart
+//   한 화면만:      … --name 'S-01__'      (테스트 이름이 곧 창 열쇠다)
+//   비교만:         flutter test --tags golden
+// 비교에 실패하면 차이 그림이 test/goldens/failures/에 생긴다(git에 올리지 않는다).
+@Tags(['golden'])
+library;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:golden_screenshot/golden_screenshot.dart';
+import 'package:<앱>/dev/canvas/canvas_model.dart';
+import 'package:<앱>/dev/canvas/canvas_phone.dart';
+import 'package:<앱>/main_canvas.dart' show canvasConfig;
+
+/// 그림 배율 — 1이면 폰 크기(dp)만큼의 화소(보통 폰 390×844). 캔버스가 멀리서 보여 줄 그림이라 이것으로 충분하다.
+const _pixelRatio = 1.0;
+
+/// 찍기 전에 화면이 데이터를 받아 그릴 시간. 로딩 창은 끝나지 않는 응답이라 다 그려질 때까지 기다리지 않고 이만큼만 흘린다
+const _settleSteps = 5;
+const _settleStep = Duration(milliseconds: 100);
+
+void main() {
+  final config = canvasConfig();
+
+  for (final frame in buildFrames(config.screens)) {
+    // testGoldens — 그림자를 켜고, 1% 안의 작은 차이는 같은 그림으로 친다(도우미 패키지 golden_screenshot)
+    testGoldens(frame.key, (tester) async {
+      tester.view.physicalSize = frame.viewport.size * _pixelRatio;
+      tester.view.devicePixelRatio = _pixelRatio;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(
+            child: CanvasPhone(
+              frame: frame,
+              config: config,
+              textScale: 1,
+              commentMode: false,
+              pins: const [],
+              onPick: (_, _, _, _) {},
+            ),
+          ),
+        ),
+      );
+      // 화면이 쓰는 서체·그림을 불러온다. 안 하면 글자가 네모 칸으로 찍힌다
+      await tester.loadAssets();
+      for (var i = 0; i < _settleSteps; i++) {
+        await tester.pump(_settleStep);
+      }
+
+      await expectLater(
+        find.byType(CanvasPhone),
+        matchesGoldenFile('canvas/${frame.key}.png'),
+      );
+    });
+  }
+}

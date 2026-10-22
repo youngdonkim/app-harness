@@ -1,0 +1,211 @@
+// 목업 캔버스 목록 만들기 — mvp/feature-list.md의 화면 목록 표·상태 표를 읽어
+// lib/dev/canvas/screens.generated.dart를 통째로 새로 쓴다. 그 파일은 손으로 고치지 않는다.
+// 손으로 더하거나 바꿀 것(비교안·흐름 묶음·폰 크기·목록에 없는 화면)은 screens.dart에 적는다 — 이 스크립트는 screens.dart를 건드리지 않는다.
+//
+// 쓰는 법 (프로젝트 맨 위 폴더에서, fvm을 쓰면 앞에 fvm):
+//   dart run tool/canvas_list.dart
+// 화면 목록이나 상태 표를 고칠 때마다 다시 돌리고, 캔버스는 R(hot restart)로 다시 시작한다.
+//
+// 읽는 규칙 (.claude/templates/mockup-canvas/README.md 「목록 파일」):
+//   화면 목록 표 — 「ID」·「화면 이름」·「MVP 포함」·「주소」는 꼭 있어야 하고, 「흐름 묶음」·「역할」은 있으면 쓴다.
+//     MVP 포함이 O로 시작하고 주소가 있는 행만 올린다. 주소는 칸 안 `…` 속 첫 낱말(뒤 괄호 설명은 버리고, ? 뒤 질의는 둔다).
+//     역할이 「비로그인 방문자」로 시작하거나 주소에 as=guest가 있으면 guest: true.
+//     흐름 묶음 칸이 없거나 비면 「<역할>: 흐름 미정」으로 묶는다.
+//   상태 표 — 첫 칸이 화면 ID로 시작하는 행에서, 칸마다 적힌 (?state=…) 값을 모은다.
+
+import 'dart:io';
+
+import 'feature_list.dart';
+
+/// 쓸 파일 — 프로젝트 맨 위 폴더 기준
+const generatedScreensPath = 'lib/dev/canvas/screens.generated.dart';
+
+/// 캔버스에 올릴 화면 하나
+class ListedScreen {
+  const ListedScreen({
+    required this.id,
+    required this.name,
+    required this.group,
+    required this.path,
+    this.guest = false,
+    this.states = const [],
+  });
+
+  final String id;
+  final String name;
+  final String group;
+  final String path;
+  final bool guest;
+
+  /// `?state=` 값(empty·loading·error·forbidden) — stateColumns 순서
+  final List<String> states;
+}
+
+/// 읽은 결과 — [error]가 있으면 쓰지 않고 멈춘다
+class ScreenListResult {
+  const ScreenListResult({
+    this.screens = const [],
+    this.skipped = const [],
+    this.error,
+  });
+
+  final List<ListedScreen> screens;
+
+  /// MVP 포함인데 주소가 아직 없어 뺀 화면 ID
+  final List<String> skipped;
+  final String? error;
+}
+
+Future<void> main(List<String> args) async {
+  if (!File('pubspec.yaml').existsSync()) {
+    stderr.writeln('프로젝트 맨 위 폴더(pubspec.yaml이 있는 곳)에서 돌려 주세요.');
+    exitCode = 64;
+    return;
+  }
+  final source = File(featureListPath);
+  if (!source.existsSync()) {
+    stderr.writeln('화면 목록 문서가 없습니다: $featureListPath');
+    exitCode = 1;
+    return;
+  }
+  final result = readScreenList(source.readAsStringSync());
+  if (result.error != null) {
+    stderr.writeln(result.error);
+    exitCode = 1;
+    return;
+  }
+  final target = File(generatedScreensPath);
+  target.parent.createSync(recursive: true);
+  target.writeAsStringSync(renderGeneratedScreens(result.screens));
+  // 지금 이 스크립트를 돌리는 dart로 정리한다 — fvm으로 돌렸으면 fvm의 dart다
+  final format = await Process.run(Platform.resolvedExecutable, [
+    'format',
+    generatedScreensPath,
+  ]);
+  if (format.exitCode != 0) {
+    stderr.writeln('dart format이 실패했습니다:\n${format.stderr}');
+    exitCode = 1;
+    return;
+  }
+  stdout.writeln('화면 ${result.screens.length}개를 $generatedScreensPath에 적었습니다.');
+  if (result.skipped.isNotEmpty) {
+    stdout.writeln(
+      '주소가 아직 없어 뺀 화면 ${result.skipped.length}개: ${result.skipped.join(', ')}',
+    );
+  }
+}
+
+/// 화면 목록 문서를 읽어 캔버스에 올릴 화면 목록을 만든다.
+ScreenListResult readScreenList(String markdown) {
+  final lines = markdown.split('\n');
+  final tables = findTables(lines);
+  final screenTable = findScreenTable(tables);
+  if (screenTable == null) {
+    return ScreenListResult(
+      error:
+          '화면 목록 표를 찾지 못했습니다 — 머리줄에 ${screenRequiredColumns.map((c) => '「$c」').join('·')} 칸이 모두 있는 표가 있어야 합니다.',
+    );
+  }
+  final idCol = screenTable.column('ID');
+  final nameCol = screenTable.column('화면 이름');
+  final mvpCol = screenTable.column('MVP 포함');
+  final pathCol = screenTable.column('주소');
+  final groupCol = screenTable.column(screenGroupColumn);
+  final roleCol = screenTable.column(screenRoleColumn);
+
+  final statesById = <String, List<String>>{};
+  final stateTable = findStateTable(tables);
+  for (final index in stateTable?.rowLines ?? const <int>[]) {
+    final cells = splitCells(lines[index]);
+    final id = screenIdPattern.firstMatch(cells.first)?.group(0);
+    if (id == null) continue;
+    final found = RegExp(r'\?state=([a-z]+)')
+        .allMatches(cells.skip(1).join(' '))
+        .map((m) => m.group(1))
+        .toSet();
+    statesById[id] = stateColumns.values.where(found.contains).toList();
+  }
+
+  String cell(List<String> cells, int column) =>
+      column >= 0 && column < cells.length ? cells[column] : '';
+
+  final screens = <ListedScreen>[];
+  final skipped = <String>[];
+  for (final index in screenTable.rowLines) {
+    final cells = splitCells(lines[index]);
+    final id = cell(cells, idCol).replaceAll(RegExp(r'\s'), '');
+    if (!screenIdPattern.hasMatch(id)) continue;
+    if (!cell(cells, mvpCol).startsWith('O')) continue;
+    final path = _pathOf(cell(cells, pathCol));
+    if (!path.startsWith('/')) {
+      skipped.add(id);
+      continue;
+    }
+    final role = cell(cells, roleCol);
+    final group = _blank(cell(cells, groupCol))
+        ? (role.isEmpty ? '흐름 미정' : '$role: 흐름 미정')
+        : cell(cells, groupCol);
+    final guest =
+        role.startsWith(guestRole) ||
+        Uri.parse(path).queryParameters['as'] == 'guest';
+    screens.add(
+      ListedScreen(
+        id: id,
+        name: cell(cells, nameCol).replaceAll('**', ''),
+        group: group,
+        path: path,
+        guest: guest,
+        states: statesById[id] ?? const [],
+      ),
+    );
+  }
+  return ScreenListResult(screens: screens, skipped: skipped);
+}
+
+/// 주소 칸 → 경로. `…` 속 첫 낱말, 없으면 칸의 첫 낱말
+String _pathOf(String cell) {
+  final inTicks = RegExp('`([^`]+)`').firstMatch(cell)?.group(1) ?? cell;
+  final words = inTicks.trim().split(RegExp(r'\s+'));
+  return words.isEmpty ? '' : words.first;
+}
+
+bool _blank(String text) => text.isEmpty || text == '-' || text == '—';
+
+/// screens.generated.dart 본문 — 쓴 뒤 dart format이 줄을 맞춘다.
+String renderGeneratedScreens(List<ListedScreen> screens) {
+  final usesStates = screens.any((s) => s.states.isNotEmpty);
+  final buffer = StringBuffer()
+    ..writeln('// 자동으로 만든 파일 — 손으로 고치지 않는다. 고칠 것은 screens.dart에 적는다.')
+    ..writeln(
+      '// mvp/feature-list.md의 화면 목록 표·상태 표에서 `dart run tool/canvas_list.dart`가 통째로 다시 쓴다.',
+    )
+    ..writeln();
+  // 상태가 하나도 없으면 DevState를 안 쓰니 import하지 않는다(쓰지 않는 import 경고)
+  if (usesStates) {
+    buffer.writeln("import '../../core/dev_state/dev_state.dart';");
+  }
+  buffer
+    ..writeln("import 'canvas_model.dart';")
+    ..writeln()
+    ..writeln('const generatedScreens = <CanvasScreen>[');
+  for (final screen in screens) {
+    buffer
+      ..writeln('  CanvasScreen(')
+      ..writeln('    id: ${_dartString(screen.id)},')
+      ..writeln('    name: ${_dartString(screen.name)},')
+      ..writeln('    group: ${_dartString(screen.group)},')
+      ..writeln('    path: ${_dartString(screen.path)},');
+    if (screen.states.isNotEmpty) {
+      buffer.writeln(
+        '    states: [${screen.states.map((s) => 'DevState.$s').join(', ')}],',
+      );
+    }
+    if (screen.guest) buffer.writeln('    guest: true,');
+    buffer.writeln('  ),');
+  }
+  buffer.writeln('];');
+  return buffer.toString();
+}
+
+String _dartString(String text) =>
+    "'${text.replaceAll(r'\', r'\\').replaceAll("'", r"\'").replaceAll(r'$', r'\$')}'";

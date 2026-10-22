@@ -1,0 +1,274 @@
+// Firebase 설정 파일 대조와 flavor 경계 검사.
+//
+// 돌리기: fvm dart run tool/check_firebase_config.dart   (CI도 같은 명령으로 돕니다)
+//
+// 검사 셋
+// 1. 실서비스 진입점(lib/main_prod.dart)이 lib/dev/를 불러오지 않는가 —
+//    직접 import뿐 아니라 import를 따라 들어간 파일까지 봅니다.
+// 2. lib/features·lib/shared에서 Firebase 객체를 `.instance`로 직접 부르지 않는가 —
+//    Firebase 객체는 lib/core/firebase/의 provider가 만들어 생성자로 넣습니다.
+// 3. .firebaserc가 있으면, flavor(dev·prod)마다 설정 파일 세 개
+//      lib/core/firebase/firebase_options_<flavor>.dart
+//      android/app/src/<flavor>/google-services.json
+//      ios/config/<flavor>/GoogleService-Info.plist
+//    의 프로젝트 ID가 .firebaserc의 같은 이름 별칭과 같은가, 그리고 안드로이드 패키지
+//    이름·iOS 번들 ID가 그 flavor의 것(개발용은 끝에 .dev)인가.
+//    한 flavor의 파일이 셋 다 없으면 아직 만들기 전으로 보고 건너뜁니다.
+//    하나라도 있으면 셋 다 있어야 합니다.
+//
+// 바깥 패키지 없이 dart:io만 씁니다.
+
+import 'dart:convert';
+import 'dart:io';
+
+const flavors = ['dev', 'prod'];
+const devSuffix = '.dev';
+
+final problems = <String>[];
+final notes = <String>[];
+
+void main() {
+  final packageName = _pubspecName();
+  _checkProdDoesNotImportDev(packageName);
+  _checkNoDirectFirebaseInstance();
+  _checkFirebaseConfig();
+
+  for (final n in notes) {
+    stdout.writeln('· $n');
+  }
+  if (problems.isEmpty) {
+    stdout.writeln('Firebase 설정·flavor 경계 검사 통과');
+    return;
+  }
+  stderr.writeln('Firebase 설정·flavor 경계 검사 실패 ${problems.length}건:');
+  for (final p in problems) {
+    stderr.writeln('  ✗ $p');
+  }
+  exitCode = 1;
+}
+
+String _pubspecName() {
+  final m = RegExp(
+    r'^name:\s*(\S+)',
+    multiLine: true,
+  ).firstMatch(File('pubspec.yaml').readAsStringSync());
+  if (m == null) {
+    stderr.writeln('pubspec.yaml에서 name을 찾지 못했습니다');
+    exit(2);
+  }
+  return m.group(1)!;
+}
+
+// --- 1. 실서비스 진입점 → lib/dev 금지 -------------------------------------
+
+void _checkProdDoesNotImportDev(String packageName) {
+  const entry = 'lib/main_prod.dart';
+  if (!File(entry).existsSync()) {
+    notes.add('$entry 없음 — 진입점 검사 건너뜀');
+    return;
+  }
+  final importRe = RegExp(
+    r'''^\s*(?:import|export|part)\s+['"]([^'"]+)['"]''',
+    multiLine: true,
+  );
+  final seen = <String>{};
+  final from = <String, String>{};
+  final queue = [_normalize(entry)];
+  while (queue.isNotEmpty) {
+    final path = queue.removeLast();
+    if (!seen.add(path)) continue;
+    if (path.startsWith('lib/dev/')) {
+      final chain = <String>[path];
+      var cur = path;
+      while (from[cur] != null) {
+        cur = from[cur]!;
+        chain.insert(0, cur);
+      }
+      problems.add('실서비스 진입점이 lib/dev/를 불러옵니다: ${chain.join(' → ')}');
+      continue;
+    }
+    final file = File(path);
+    if (!file.existsSync()) continue;
+    for (final m in importRe.allMatches(file.readAsStringSync())) {
+      final uri = m.group(1)!;
+      String? target;
+      if (uri.startsWith('package:$packageName/')) {
+        target = 'lib/${uri.substring('package:$packageName/'.length)}';
+      } else if (!uri.contains(':')) {
+        target = '${File(path).parent.path}/$uri';
+      }
+      if (target == null) continue;
+      target = _normalize(target);
+      from.putIfAbsent(target, () => path);
+      queue.add(target);
+    }
+  }
+}
+
+String _normalize(String path) {
+  final out = <String>[];
+  for (final part in path.split('/')) {
+    if (part.isEmpty || part == '.') continue;
+    if (part == '..') {
+      if (out.isNotEmpty) out.removeLast();
+    } else {
+      out.add(part);
+    }
+  }
+  return out.join('/');
+}
+
+// --- 2. lib/features·lib/shared의 Firebase .instance 금지 ---------------------
+
+void _checkNoDirectFirebaseInstance() {
+  final re = RegExp(r'\bFirebase\w*\.instance(For)?\b');
+  for (final dir in ['lib/features', 'lib/shared']) {
+    final d = Directory(dir);
+    if (!d.existsSync()) continue;
+    for (final f in d.listSync(recursive: true).whereType<File>()) {
+      if (!f.path.endsWith('.dart')) continue;
+      final lines = f.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        final line = lines[i];
+        if (line.trimLeft().startsWith('//')) continue;
+        if (re.hasMatch(line)) {
+          problems.add(
+            '${f.path}:${i + 1} Firebase 객체를 .instance로 직접 부릅니다 — '
+            'lib/core/firebase/의 provider로 받아 생성자로 넣으세요',
+          );
+        }
+      }
+    }
+  }
+}
+
+// --- 3. 설정 파일 세 개 ↔ .firebaserc ------------------------------------
+
+void _checkFirebaseConfig() {
+  final rc = File('.firebaserc');
+  if (!rc.existsSync()) {
+    notes.add('.firebaserc 없음 — Firebase를 붙이기 전이라 설정 파일 대조를 건너뜀');
+    return;
+  }
+  final projects =
+      (jsonDecode(rc.readAsStringSync()) as Map<String, dynamic>)['projects']
+          as Map<String, dynamic>? ??
+      {};
+  final basePackage = _androidApplicationId();
+
+  for (final flavor in flavors) {
+    final expected = projects[flavor] as String?;
+    final dartFile = File('lib/core/firebase/firebase_options_$flavor.dart');
+    final androidFile = File('android/app/src/$flavor/google-services.json');
+    final iosFile = File('ios/config/$flavor/GoogleService-Info.plist');
+    final files = [dartFile, androidFile, iosFile];
+    final present = files.where((f) => f.existsSync()).toList();
+
+    if (present.isEmpty) {
+      notes.add('$flavor: 설정 파일이 아직 없음 — 대조를 건너뜀');
+      continue;
+    }
+    if (expected == null || expected.isEmpty) {
+      problems.add('.firebaserc의 projects에 별칭 "$flavor"가 없습니다');
+      continue;
+    }
+    for (final f in files) {
+      if (!f.existsSync()) {
+        problems.add('$flavor: ${f.path} 없음 — 세 설정 파일은 함께 있어야 합니다');
+      }
+    }
+    final expectedPackage = basePackage == null
+        ? null
+        : (flavor == 'dev' ? '$basePackage$devSuffix' : basePackage);
+
+    // Dart 설정 파일 — 플랫폼마다 projectId가 하나씩 있습니다.
+    if (dartFile.existsSync()) {
+      final ids = RegExp(r'''projectId:\s*['"]([^'"]+)['"]''')
+          .allMatches(dartFile.readAsStringSync())
+          .map((m) => m.group(1)!)
+          .toSet();
+      if (ids.isEmpty) {
+        problems.add('${dartFile.path}에서 projectId를 찾지 못했습니다');
+      }
+      for (final id in ids) {
+        if (id != expected) {
+          problems.add(
+            '${dartFile.path}의 projectId "$id" ≠ .firebaserc $flavor "$expected"',
+          );
+        }
+      }
+      if (expectedPackage != null) {
+        for (final m in RegExp(
+          r'''iosBundleId:\s*['"]([^'"]+)['"]''',
+        ).allMatches(dartFile.readAsStringSync())) {
+          if (m.group(1) != expectedPackage) {
+            problems.add(
+              '${dartFile.path}의 iosBundleId "${m.group(1)}" ≠ "$expectedPackage"',
+            );
+          }
+        }
+      }
+    }
+
+    // 안드로이드 설정 파일
+    if (androidFile.existsSync()) {
+      final json =
+          jsonDecode(androidFile.readAsStringSync()) as Map<String, dynamic>;
+      final id = (json['project_info'] as Map?)?['project_id'];
+      if (id != expected) {
+        problems.add(
+          '${androidFile.path}의 project_id "$id" ≠ .firebaserc $flavor "$expected"',
+        );
+      }
+      if (expectedPackage != null) {
+        final packages = [
+          for (final c in (json['client'] as List? ?? const []))
+            ((c as Map)['client_info']
+                as Map?)?['android_client_info']?['package_name'],
+        ];
+        if (!packages.contains(expectedPackage)) {
+          problems.add(
+            '${androidFile.path}에 패키지 "$expectedPackage" 앱이 없습니다 '
+            '(들어 있는 것: ${packages.join(', ')})',
+          );
+        }
+      }
+    }
+
+    // iOS 설정 파일
+    if (iosFile.existsSync()) {
+      final plist = iosFile.readAsStringSync();
+      final id = _plistString(plist, 'PROJECT_ID');
+      if (id != expected) {
+        problems.add(
+          '${iosFile.path}의 PROJECT_ID "$id" ≠ .firebaserc $flavor "$expected"',
+        );
+      }
+      final bundle = _plistString(plist, 'BUNDLE_ID');
+      if (expectedPackage != null && bundle != expectedPackage) {
+        problems.add(
+          '${iosFile.path}의 BUNDLE_ID "$bundle" ≠ "$expectedPackage"',
+        );
+      }
+    }
+  }
+}
+
+String? _androidApplicationId() {
+  for (final name in ['build.gradle.kts', 'build.gradle']) {
+    final f = File('android/app/$name');
+    if (!f.existsSync()) continue;
+    final m = RegExp(r'''applicationId\s*=?\s*["']([^"']+)["']''')
+        .firstMatch(f.readAsStringSync());
+    if (m != null) return m.group(1);
+  }
+  notes.add(
+    'android/app/build.gradle(.kts)에서 applicationId를 못 찾아 패키지 이름 대조를 건너뜀',
+  );
+  return null;
+}
+
+String? _plistString(String plist, String key) =>
+    RegExp('<key>$key</key>\\s*<string>([^<]*)</string>')
+        .firstMatch(plist)
+        ?.group(1);

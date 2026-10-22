@@ -1,0 +1,58 @@
+// 목업 캔버스가 프로젝트에서 받는 것 — lib/main_canvas.dart가 한 번 채운다.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
+import 'package:go_router/go_router.dart';
+
+import 'canvas_comments.dart';
+import 'canvas_model.dart';
+
+/// 창 하나에 쓸 라우터를 만든다. 창마다 새로 부르므로, 내비게이터 열쇠(GlobalKey)를 함수 밖 전역에 두면 안 된다.
+/// [container]는 그 창의 provider 묶음 — 라우터가 로그인 상태 같은 provider를 읽어야 할 때 쓴다.
+typedef CanvasRouterFactory = GoRouter Function(
+  ProviderContainer container,
+  String initialLocation,
+);
+
+/// 창의 멀리서 보이는 모습 — 실제 화면 대신 그릴 그림(골든 그림 등). null을 돌려주면 이름 카드를 그린다.
+typedef CanvasThumbnailBuilder = Widget? Function(
+  BuildContext context,
+  CanvasFrame frame,
+);
+
+class CanvasConfig {
+  const CanvasConfig({
+    required this.screens,
+    required this.theme,
+    required this.createRouter,
+    this.overrides = const [],
+    this.localizationsDelegates,
+    this.supportedLocales = const [Locale('en', 'US')],
+    this.locale,
+    this.comments,
+    this.thumbnail,
+  });
+
+  /// 캔버스에 띄울 화면 — lib/dev/canvas/screens.dart의 canvasScreens
+  final List<CanvasScreen> screens;
+
+  /// 앱 테마 — `buildAppTheme(AppTokens.light)`
+  final ThemeData theme;
+
+  final CanvasRouterFactory createRouter;
+
+  /// 모든 창에 거는 provider 덮어쓰기 — 저장·조회 provider를 가짜 저장소로 바꾼다(lib/dev/fakes/)
+  final List<Override> overrides;
+
+  /// 창 안 앱의 문구 파일·언어 — 실제 앱 진입점(main_dev.dart)과 같은 값을 넘긴다
+  final Iterable<LocalizationsDelegate<dynamic>>? localizationsDelegates;
+  final Iterable<Locale> supportedLocales;
+  final Locale? locale;
+
+  /// 코멘트 저장소 — 안 주면 맥에서 도는 코멘트 서버(tool/canvas_server.dart)에 붙는다
+  final CanvasCommentStore? comments;
+
+  /// 멀리서 보이는 그림 — 안 주면 이름 카드
+  final CanvasThumbnailBuilder? thumbnail;
+}

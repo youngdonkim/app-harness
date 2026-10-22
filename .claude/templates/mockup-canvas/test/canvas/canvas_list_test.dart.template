@@ -1,0 +1,112 @@
+// 목록 만들기·상태 칸 채우기 검사 — 화면 목록 문서를 글자로 넣고 읽은 결과를 본다(파일을 건드리지 않는다).
+import 'package:flutter_test/flutter_test.dart';
+
+import '../../tool/canvas_list.dart';
+import '../../tool/state_fill.dart';
+
+/// 칸 순서를 일부러 섞은 견본 — 칸은 이름으로 찾으므로 순서가 달라도 같게 읽혀야 한다
+const _doc = '''
+# 기능 목록
+
+## 6. 화면 목록
+
+| 화면 이름 | ID | 역할 | 흐름 묶음 | 주소 | MVP 포함 | 주 행동 |
+|---|---|---|---|---|---|---|
+| 모임 목록 | S-01 | 참가자 | 참가자: 모임 찾기에서 신청까지 | `/meetings` | O | 모임 열기 |
+| 모임 상세 | S-02 | 참가자 | 참가자: 모임 찾기에서 신청까지 | `/meetings/m-01` (견본 모임) | O | 신청하기 |
+| 첫 화면 | S-03 | 비로그인 방문자 | | `/` | O | 둘러보기 |
+| 설정 | S-04 | 참가자 | | | O | — |
+| 관리자 | S-05 | 운영자 | | `/admin` | X | — |
+| 검색 | S-06 | 참가자 | - | `/search?q=보드게임` | O | 검색 |
+
+## 7. 상태 표
+
+| 화면 | 로딩 | 빈 상태 | 오류 | 권한없음 |
+|---|---|---|---|---|
+| S-01 모임 목록 | O (?state=loading) | O (?state=empty) · 첫 모임 만들기 안내 | O | 해당없음 |
+| S-02 모임 상세 | O | 해당없음 | O* 신청 실패 | O |
+''';
+
+void main() {
+  group('목록 만들기', () {
+    test('칸 이름으로 읽고, 주소 없는 화면은 빼고 알린다', () {
+      final result = readScreenList(_doc);
+      expect(result.error, isNull);
+      expect(result.screens.map((s) => s.id), ['S-01', 'S-02', 'S-03', 'S-06']);
+      expect(result.skipped, ['S-04']);
+
+      final list = result.screens[0];
+      expect(list.name, '모임 목록');
+      expect(list.group, '참가자: 모임 찾기에서 신청까지');
+      expect(list.states, ['empty', 'loading']); // 칸 순서가 아니라 정해진 순서
+
+      expect(result.screens[1].path, '/meetings/m-01'); // 괄호 설명은 버린다
+      expect(result.screens[2].guest, isTrue);
+      expect(result.screens[2].group, '비로그인 방문자: 흐름 미정');
+      expect(result.screens[3].path, '/search?q=보드게임'); // 질의는 둔다
+      expect(result.screens[3].group, '참가자: 흐름 미정'); // - 는 빈 칸
+    });
+
+    test('꼭 있어야 할 칸이 없으면 멈춘다', () {
+      final result = readScreenList(_doc.replaceFirst('| 주소 |', '| 경로 |'));
+      expect(result.error, contains('주소'));
+    });
+
+    test('파일 본문 — 따옴표·달러 표시를 그대로 옮긴다', () {
+      final text = renderGeneratedScreens(const [
+        ListedScreen(
+          id: 'S-01',
+          name: "철수's \$5 모임",
+          group: '참가자: 흐름',
+          path: '/',
+          guest: true,
+          states: ['empty'],
+        ),
+      ]);
+      expect(text, contains(r"name: '철수\'s \$5 모임',"));
+      expect(text, contains('states: [DevState.empty],'));
+      expect(text, contains('guest: true,'));
+      expect(text, contains("import '../../core/dev_state/dev_state.dart';"));
+      expect(
+        renderGeneratedScreens(const []),
+        isNot(contains('dev_state.dart')),
+      );
+    });
+  });
+
+  group('상태 칸 채우기', () {
+    test('O 칸에만 적고, 못 적은 칸과 없는 화면을 알린다', () {
+      final (wanted, unknown) = parseStateInput(
+        '# 주석\nS-01: error, forbidden\nS-02 forbidden error empty fast\nS-09 empty\n',
+      );
+      expect(unknown.single, contains('fast'));
+      final result = fillStates(_doc, wanted)!;
+      expect(result.changed, 2); // S-01 오류, S-02 권한없음
+      expect(result.text, contains('| O (?state=error) | 해당없음 |'));
+      expect(result.text, contains('| O* 신청 실패 | O (?state=forbidden) |'));
+      expect(result.notes.join('\n'), contains('S-01 권한없음'));
+      expect(result.notes.join('\n'), contains('S-02 오류'));
+      expect(result.notes.join('\n'), contains('S-02 빈 상태'));
+      expect(result.notes.join('\n'), contains('S-09'));
+
+      // 적은 값은 목록 만들기가 그대로 읽는다
+      final listed = readScreenList(result.text);
+      expect(listed.screens[0].states, ['empty', 'loading', 'error']);
+      expect(listed.screens[1].states, ['forbidden']);
+    });
+
+    test('이미 적힌 값은 다시 적지 않는다', () {
+      final result = fillStates(_doc, {
+        'S-01': ['empty', 'loading'],
+      })!;
+      expect(result.changed, 0);
+      expect(result.text, _doc);
+    });
+
+    test('점검 — O인데 값이 없는 칸', () {
+      final notes = checkStates(_doc)!;
+      expect(notes, hasLength(3)); // S-01 오류, S-02 로딩, S-02 권한없음
+      expect(notes.first, contains('S-01 오류'));
+    });
+  });
+}

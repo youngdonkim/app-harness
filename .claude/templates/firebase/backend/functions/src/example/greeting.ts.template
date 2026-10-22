@@ -1,0 +1,17 @@
+// 예시 기능 폴더 — 기능 하나 = src/<기능>/ 폴더 하나.
+// 판단 로직은 Firebase 없이 도는 순수 함수로 떼어 단위 테스트합니다.
+import { HttpsError, onCall } from "firebase-functions/v2/https";
+
+export function greetingFor(name: unknown): string {
+  if (typeof name !== "string" || name.trim() === "") {
+    throw new HttpsError("invalid-argument", "name이 필요합니다");
+  }
+  return `안녕하세요, ${name.trim()}님`;
+}
+
+export const greeting = onCall((request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "로그인이 필요합니다");
+  }
+  return { message: greetingFor(request.data?.name) };
+});

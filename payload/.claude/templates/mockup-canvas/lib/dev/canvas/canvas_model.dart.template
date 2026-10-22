@@ -1,0 +1,490 @@
+// 목업 캔버스의 화면 목록·창 목록·코멘트 모양.
+//
+// 창 하나 = 화면 하나 × 폰 크기 하나(보통 폰·작은 폰) × 상태 하나(기본·빈·로딩·오류·권한없음) × 판 하나(원래 화면·비교안).
+// 화면 목록(screens.dart)을 buildFrames가 창 목록으로 펴고, 캔버스 판(canvas_app.dart)이 그 순서대로 놓는다.
+// 창 열쇠(CanvasFrame.key)는 미리보기 그림 파일 이름에도 쓴다(.claude/templates/mockup-canvas/README.md 「미리보기 그림(골든 그림)」).
+
+import 'package:flutter/material.dart';
+
+import '../../core/dev_state/dev_state.dart';
+
+/// 폰 크기 — 보통 폰과 작은 폰 한 쌍을 나란히 띄운다.
+enum CanvasViewport {
+  phone(
+    label: '보통 폰',
+    size: Size(390, 844),
+    padding: EdgeInsets.only(top: 47, bottom: 34),
+  ),
+  small(
+    label: '작은 폰',
+    size: Size(360, 780),
+    padding: EdgeInsets.only(top: 24, bottom: 16),
+  );
+
+  const CanvasViewport({
+    required this.label,
+    required this.size,
+    required this.padding,
+  });
+
+  final String label;
+
+  /// 화면 크기(dp)
+  final Size size;
+
+  /// 상태 표시줄·홈 표시줄 자리 — 화면의 SafeArea가 이만큼 비운다.
+  final EdgeInsets padding;
+
+  static CanvasViewport? parse(String? value) {
+    for (final viewport in values) {
+      if (viewport.name == value) return viewport;
+    }
+    return null;
+  }
+}
+
+/// 상태 이름 — 창 이름표와 코멘트 단서에 쓴다.
+String devStateLabel(DevState? state) => switch (state) {
+  null => '기본',
+  DevState.empty => '빈 상태',
+  DevState.loading => '로딩',
+  DevState.error => '오류',
+  DevState.forbidden => '권한없음',
+};
+
+/// 비교안 한 판 — 원래 화면 아래에 판마다 줄을 지어 놓인다.
+///
+/// [builder]·[path]는 많아야 하나다. 둘 다 없으면 원래 화면을 [theme]으로 띄운다. [theme]은 어느 쪽과도 함께 쓸 수 있다.
+/// - [theme]만 — 같은 화면을 비교안 테마로 띄운다(값만 바꿔 보는 비교안). 예: `buildAppTheme(draftHomeB)`
+/// - [builder] — 비교안 화면 위젯을 바로 띄운다(lib/dev/drafts/의 화면). 라우터 없이 뜨므로 화면 안 이동은 안 된다
+/// - [path] — 라우터에 등록한 다른 경로를 띄운다
+class CanvasDraft {
+  const CanvasDraft({
+    required this.label,
+    this.path,
+    this.builder,
+    this.theme,
+    this.states,
+  });
+
+  final String label;
+  final String? path;
+  final WidgetBuilder? builder;
+  final ThemeData? theme;
+
+  /// 띄울 상태 — 안 적으면 원래 화면과 같다.
+  final List<DevState>? states;
+}
+
+/// 캔버스에 띄울 화면 하나.
+class CanvasScreen {
+  const CanvasScreen({
+    required this.id,
+    required this.name,
+    required this.group,
+    this.path,
+    this.builder,
+    this.states = const [],
+    this.guest = false,
+    this.widths = CanvasViewport.values,
+    this.drafts = const [],
+  }) : assert(
+         path != null || builder != null,
+         '경로(path)나 위젯(builder) 중 하나는 있어야 합니다',
+       );
+
+  /// 화면 ID — 화면 목록(mvp/feature-list.md 6절)의 ID와 같게(`S-01` 꼴)
+  final String id;
+
+  /// 화면 이름 — 사용자가 보는 이름
+  final String name;
+
+  /// 흐름 묶음 — 「역할: 흐름」 꼴. 같은 묶음끼리 왼쪽 목록에서 한 판으로 고른다.
+  final String group;
+
+  /// go_router 경로(예: `/meetings/m-01`). 끝에 `?as=guest`가 있으면 「로그인 전」으로 띄운다.
+  final String? path;
+
+  /// 경로 없이 위젯을 바로 띄울 때(디자인 시스템 페이지 등). 라우터 없이 뜬다.
+  final WidgetBuilder? builder;
+
+  /// 기본 모양 아래에 줄을 지어 띄울 상태
+  final List<DevState> states;
+
+  /// 「로그인 전」 모습으로 띄운다
+  final bool guest;
+
+  /// 띄울 폰 크기 — 기본은 보통 폰·작은 폰 둘 다
+  final List<CanvasViewport> widths;
+
+  /// 비교안 — 화면 개선(2-2)·개성 입히기(2-3) 동안만 붙인다
+  final List<CanvasDraft> drafts;
+
+  CanvasScreen copyWith({
+    String? name,
+    String? group,
+    String? path,
+    WidgetBuilder? builder,
+    List<DevState>? states,
+    bool? guest,
+    List<CanvasViewport>? widths,
+    List<CanvasDraft>? drafts,
+  }) => CanvasScreen(
+    id: id,
+    name: name ?? this.name,
+    group: group ?? this.group,
+    path: path ?? this.path,
+    builder: builder ?? this.builder,
+    states: states ?? this.states,
+    guest: guest ?? this.guest,
+    widths: widths ?? this.widths,
+    drafts: drafts ?? this.drafts,
+  );
+}
+
+/// 자동 목록의 화면 하나에 덮어쓸 필드 — 적은 필드만 바뀐다. [skip]이면 캔버스에서 뺀다.
+class CanvasOverride {
+  const CanvasOverride({
+    this.name,
+    this.group,
+    this.path,
+    this.builder,
+    this.states,
+    this.guest,
+    this.widths,
+    this.drafts,
+    this.skip = false,
+  });
+
+  final String? name;
+  final String? group;
+  final String? path;
+  final WidgetBuilder? builder;
+  final List<DevState>? states;
+  final bool? guest;
+  final List<CanvasViewport>? widths;
+  final List<CanvasDraft>? drafts;
+  final bool skip;
+}
+
+/// 자동 목록 + 덮어쓰기 + 더할 화면 → 캔버스가 읽는 목록. 배열 순서가 곧 흐름 순서다.
+List<CanvasScreen> mergeScreens(
+  List<CanvasScreen> generated,
+  Map<String, CanvasOverride> overrides,
+  List<CanvasScreen> extras,
+) {
+  final merged = <CanvasScreen>[];
+  for (final screen in generated) {
+    final change = overrides[screen.id];
+    if (change == null) {
+      merged.add(screen);
+    } else if (!change.skip) {
+      merged.add(
+        screen.copyWith(
+          name: change.name,
+          group: change.group,
+          path: change.path,
+          builder: change.builder,
+          states: change.states,
+          guest: change.guest,
+          widths: change.widths,
+          drafts: change.drafts,
+        ),
+      );
+    }
+  }
+  return [...merged, ...extras];
+}
+
+/// 흐름 묶음 이름 목록 — 처음 나온 차례대로
+List<String> groupsOf(List<CanvasScreen> screens) {
+  final groups = <String>[];
+  for (final screen in screens) {
+    if (!groups.contains(screen.group)) groups.add(screen.group);
+  }
+  return groups;
+}
+
+/// 캔버스 위 창 하나
+class CanvasFrame {
+  const CanvasFrame({
+    required this.screen,
+    required this.draft,
+    required this.viewport,
+    required this.state,
+    required this.column,
+    required this.row,
+  });
+
+  final CanvasScreen screen;
+
+  /// 비교안이면 그 판, 원래 화면이면 null
+  final CanvasDraft? draft;
+  final CanvasViewport viewport;
+
+  /// 기본 모양이면 null
+  final DevState? state;
+
+  /// 판에서 몇 번째 화면 세로줄인지(0부터)
+  final int column;
+
+  /// 그 화면 세로줄 안에서 몇 번째 줄인지 — 기본·상태·비교안마다 한 줄
+  final int row;
+
+  /// 창 열쇠 — 영문·숫자·-·_만. 예: `S-02__main__phone__empty`
+  String get key {
+    final variant = draft == null ? 'main' : 'draft-${_slug(draft!.label)}';
+    return '${_slug(screen.id)}__${variant}__${viewport.name}__${state?.name ?? 'base'}';
+  }
+
+  /// 라우터에 넘길 경로(질의 `as=guest`는 뺀다). 위젯으로 띄우는 창이면 null
+  String? get location {
+    final raw = draft?.path ?? (draft?.builder != null ? null : screen.path);
+    if (raw == null) return null;
+    final uri = Uri.parse(raw);
+    final query = Map.of(uri.queryParameters)
+      ..remove('as')
+      ..remove('state');
+    return query.isEmpty
+        ? uri.path
+        : Uri(path: uri.path, queryParameters: query).toString();
+  }
+
+  /// 위젯으로 바로 띄우는 창이면 그 위젯
+  WidgetBuilder? get builder =>
+      draft?.builder ?? (draft?.path == null ? screen.builder : null);
+
+  /// 「로그인 전」으로 띄우나
+  bool get guest {
+    final raw = draft?.path ?? screen.path;
+    return screen.guest ||
+        (raw != null && Uri.parse(raw).queryParameters['as'] == 'guest');
+  }
+
+  /// 코멘트에 적는 주소 — 경로에 `?state=`를 붙인 것(개발용 앱에서 같은 상태로 여는 주소)
+  String get url {
+    final base = draft?.path ?? screen.path ?? 'widget:${screen.id}';
+    if (state == null) return base;
+    return '$base${base.contains('?') ? '&' : '?'}state=${state!.name}';
+  }
+
+  /// 창 이름 — 「보통 폰 · 빈 상태」, 비교안이면 앞에 판 이름
+  String get label => [
+    if (draft != null) draft!.label,
+    viewport.label,
+    devStateLabel(state),
+  ].join(' · ');
+
+  static String _slug(String text) {
+    final slug = text
+        .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
+    return slug.isEmpty ? 'x' : slug;
+  }
+}
+
+/// 화면 목록을 창 목록으로 편다 — 배열 순서가 곧 캔버스 순서다.
+List<CanvasFrame> buildFrames(List<CanvasScreen> screens) {
+  final frames = <CanvasFrame>[];
+  for (var column = 0; column < screens.length; column++) {
+    final screen = screens[column];
+    final widths = screen.widths.isEmpty
+        ? CanvasViewport.values
+        : screen.widths;
+    var row = 0;
+    void add(CanvasDraft? draft, List<DevState> states) {
+      for (final state in <DevState?>[null, ...states]) {
+        for (final viewport in CanvasViewport.values) {
+          if (!widths.contains(viewport)) continue;
+          frames.add(
+            CanvasFrame(
+              screen: screen,
+              draft: draft,
+              viewport: viewport,
+              state: state,
+              column: column,
+              row: row,
+            ),
+          );
+        }
+        row += 1;
+      }
+    }
+
+    add(null, screen.states);
+    for (final draft in screen.drafts) {
+      add(draft, draft.states ?? screen.states);
+    }
+  }
+  return frames;
+}
+
+/// 코멘트를 남긴 자리의 단서 — Claude가 고칠 코드를 찾는 데 쓴다.
+class CanvasCommentTarget {
+  const CanvasCommentTarget({
+    this.selector = '',
+    this.text = '',
+    this.source,
+    this.component,
+  });
+
+  /// 누른 자리까지 이어진 위젯 이름 줄(프로젝트 코드가 만든 위젯만). 예: `MeetingListScreen > MeetingCard > Text`
+  final String selector;
+
+  /// 누른 자리의 글자 앞부분
+  final String text;
+
+  /// 누른 자리에 가장 가까운 프로젝트 위젯을 만든 코드 자리 「파일:줄」. 예: `lib/features/meetings/widgets/meeting_card.dart:41`
+  final String? source;
+
+  /// 그 위젯 이름. 예: `Text`
+  final String? component;
+
+  factory CanvasCommentTarget.fromJson(Map<String, Object?> json) =>
+      CanvasCommentTarget(
+        selector: json['selector'] as String? ?? '',
+        text: json['text'] as String? ?? '',
+        source: json['source'] as String?,
+        component: json['component'] as String?,
+      );
+
+  Map<String, Object?> toJson() => {
+    'selector': selector,
+    'text': text,
+    'source': source,
+    'component': component,
+  };
+}
+
+/// 코멘트 한 건 — mvp/canvas-comments.json에 배열로 쌓인다(사람이 남긴 수정 요청 기록, git에 올라간다).
+class CanvasComment {
+  const CanvasComment({
+    required this.id,
+    required this.screenId,
+    required this.screenName,
+    required this.draft,
+    required this.url,
+    required this.viewport,
+    required this.state,
+    required this.target,
+    required this.position,
+    required this.comment,
+    required this.status,
+    required this.resolution,
+    required this.createdAt,
+    required this.resolvedAt,
+  });
+
+  final String id;
+  final String screenId;
+  final String screenName;
+
+  /// 비교안에 단 코멘트면 판 이름
+  final String? draft;
+
+  /// 창이 연 경로(`?state=` 포함)
+  final String url;
+
+  /// `phone`(보통 폰)·`small`(작은 폰)
+  final String viewport;
+
+  /// `empty`·`loading`·`error`·`forbidden`, 기본 모양이면 null
+  final String? state;
+  final CanvasCommentTarget target;
+
+  /// 창 안 위치 — 화면 왼쪽 위에서 잰 거리(x·y, dp)와 누른 위젯 상자 안의 비율(rx·ry, 0~1)
+  final ({double x, double y, double rx, double ry}) position;
+  final String comment;
+
+  /// `open`·`done`
+  final String status;
+
+  /// 처리 메모 — 고친 쪽(대개 Claude)이 무엇을 고쳤는지 적는다
+  final String resolution;
+  final String createdAt;
+  final String? resolvedAt;
+
+  bool get isOpen => status != 'done';
+
+  /// 이 코멘트가 [frame] 창에 꽂히나
+  bool belongsTo(CanvasFrame frame) =>
+      screenId == frame.screen.id &&
+      draft == frame.draft?.label &&
+      viewport == frame.viewport.name &&
+      state == frame.state?.name;
+
+  factory CanvasComment.fromJson(Map<String, Object?> json) {
+    final position =
+        (json['position'] as Map?)?.cast<String, Object?>() ?? const {};
+    double number(String key) => (position[key] as num?)?.toDouble() ?? 0;
+    return CanvasComment(
+      id: json['id'] as String? ?? '',
+      screenId: json['screenId'] as String? ?? '',
+      screenName: json['screenName'] as String? ?? '',
+      draft: json['draft'] as String?,
+      url: json['url'] as String? ?? '',
+      viewport: json['viewport'] as String? ?? 'phone',
+      state: json['state'] as String?,
+      target: CanvasCommentTarget.fromJson(
+        (json['target'] as Map?)?.cast<String, Object?>() ?? const {},
+      ),
+      position: (
+        x: number('x'),
+        y: number('y'),
+        rx: number('rx'),
+        ry: number('ry'),
+      ),
+      comment: json['comment'] as String? ?? '',
+      status: json['status'] as String? ?? 'open',
+      resolution: json['resolution'] as String? ?? '',
+      createdAt: json['createdAt'] as String? ?? '',
+      resolvedAt: json['resolvedAt'] as String?,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'screenId': screenId,
+    'screenName': screenName,
+    'draft': draft,
+    'url': url,
+    'viewport': viewport,
+    'state': state,
+    'target': target.toJson(),
+    'position': {
+      'x': position.x,
+      'y': position.y,
+      'rx': position.rx,
+      'ry': position.ry,
+    },
+    'comment': comment,
+    'status': status,
+    'resolution': resolution,
+    'createdAt': createdAt,
+    'resolvedAt': resolvedAt,
+  };
+}
+
+/// 새 코멘트 — 서버가 id·status·createdAt을 붙여 CanvasComment로 저장한다.
+Map<String, Object?> newCommentBody({
+  required CanvasFrame frame,
+  required CanvasCommentTarget target,
+  required Offset position,
+  required Offset ratio,
+  required String comment,
+}) => {
+  'screenId': frame.screen.id,
+  'screenName': frame.screen.name,
+  'draft': frame.draft?.label,
+  'url': frame.url,
+  'viewport': frame.viewport.name,
+  'state': frame.state?.name,
+  'target': target.toJson(),
+  'position': {
+    'x': position.dx,
+    'y': position.dy,
+    'rx': ratio.dx,
+    'ry': ratio.dy,
+  },
+  'comment': comment,
+};

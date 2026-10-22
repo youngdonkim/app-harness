@@ -1,0 +1,80 @@
+// 계측 이벤트 「정의 + 호출」 검사.
+//
+// 돌리기: fvm dart run tool/check_analytics_events.dart   (CI도 같은 명령으로 돕니다)
+//
+// 검사 둘
+// 1. lib/core/analytics/events.dart의 AnalyticsEvents에 정의된 공개 이벤트 함수마다
+//    그 파일 밖(lib/ 아래, 생성 파일 제외)에서 부르는 곳이 한 곳 이상 있는가.
+//    정의만 하고 부르지 않으면 출시 뒤에야 숫자가 비어 있는 것을 알게 됩니다.
+// 2. events.dart 밖에서 logEvent를 직접 부르지 않는가 — 이벤트는 한 파일에만 둡니다.
+//
+// events.dart가 아직 없으면(계측을 붙이기 전) 건너뜁니다.
+// 테스트(test/)에서 부른 것은 「부르는 곳」으로 세지 않습니다.
+
+import 'dart:io';
+
+const eventsPath = 'lib/core/analytics/events.dart';
+
+void main() {
+  final eventsFile = File(eventsPath);
+  if (!eventsFile.existsSync()) {
+    stdout.writeln('$eventsPath 없음 — 계측을 붙이기 전이라 건너뜀');
+    return;
+  }
+
+  // 클래스 안 두 칸 들여쓴 공개 함수: `Future<void> name(` 또는 `void name(`
+  final defRe = RegExp(
+    r'^  (?:Future<void>|void)\s+([a-z][A-Za-z0-9]*)\s*\(',
+    multiLine: true,
+  );
+  final events = defRe
+      .allMatches(eventsFile.readAsStringSync())
+      .map((m) => m.group(1)!)
+      .toList();
+
+  final sources = <String, String>{};
+  for (final f in Directory(
+    'lib',
+  ).listSync(recursive: true).whereType<File>()) {
+    final p = f.path.replaceAll(r'\', '/');
+    if (!p.endsWith('.dart') || p == eventsPath) continue;
+    if (p.endsWith('.g.dart') || p.endsWith('.freezed.dart')) continue;
+    sources[p] = f.readAsStringSync();
+  }
+
+  final problems = <String>[];
+  for (final name in events) {
+    final callRe = RegExp('\\.$name\\b');
+    final callers = sources.entries
+        .where((e) => callRe.hasMatch(e.value))
+        .map((e) => e.key)
+        .toList();
+    if (callers.isEmpty) {
+      problems.add('이벤트 함수 $name()를 부르는 곳이 없습니다 — 화면·흐름에서 부르거나 지우세요');
+    }
+  }
+
+  final logRe = RegExp(r'\blogEvent\s*\(');
+  for (final e in sources.entries) {
+    final lines = e.value.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].trimLeft().startsWith('//')) continue;
+      if (logRe.hasMatch(lines[i])) {
+        problems.add(
+          '${e.key}:${i + 1} logEvent를 직접 부릅니다 — $eventsPath에 이벤트 함수로 정의하고 그 함수를 부르세요',
+        );
+      }
+    }
+  }
+
+  stdout.writeln('정의된 이벤트 함수 ${events.length}개');
+  if (problems.isEmpty) {
+    stdout.writeln('계측 정의·호출 검사 통과');
+    return;
+  }
+  stderr.writeln('계측 정의·호출 검사 실패 ${problems.length}건:');
+  for (final p in problems) {
+    stderr.writeln('  ✗ $p');
+  }
+  exitCode = 1;
+}

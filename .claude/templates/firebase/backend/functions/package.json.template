@@ -1,0 +1,14 @@
+{
+  "name": "functions",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": {
+    "node": "<Node 주 판>"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "test": "npm run build && node --test \"lib/**/*.test.js\""
+  }
+}

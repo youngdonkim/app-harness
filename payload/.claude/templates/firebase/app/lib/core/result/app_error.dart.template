@@ -1,0 +1,30 @@
+/// 저장·조회 코드가 화면에 돌려주는 실패의 갈래.
+///
+/// 화면은 이 갈래만 보고 오류 상태(상태 표의 한 줄)를 고릅니다. 갈래를 늘리면
+/// 화면의 `switch`가 빠진 갈래를 컴파일 오류로 알려 줍니다.
+sealed class AppError {
+  const AppError({this.cause});
+
+  /// 원래 예외 — 기록(로그·Crashlytics)용. 화면 문구에 쓰지 않습니다.
+  final Object? cause;
+}
+
+/// 네트워크가 끊겼거나 서버에 닿지 못했습니다. 다시 시도하면 될 수 있습니다.
+final class NetworkError extends AppError {
+  const NetworkError({super.cause});
+}
+
+/// 로그인하지 않았거나 이 데이터에 권한이 없습니다(보안 규칙이 막음).
+final class PermissionDeniedError extends AppError {
+  const PermissionDeniedError({super.cause});
+}
+
+/// 찾는 데이터가 없습니다(지워졌거나 주소가 틀림).
+final class NotFoundError extends AppError {
+  const NotFoundError({super.cause});
+}
+
+/// 위 갈래에 들지 않는 실패. 기록해 두고 화면에는 일반 오류를 보여 줍니다.
+final class UnknownError extends AppError {
+  const UnknownError({super.cause});
+}

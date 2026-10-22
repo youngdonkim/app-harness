@@ -1,0 +1,13 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:<앱>/dev/dev_flavor_banner.dart';
+
+void main() {
+  testWidgets('개발용 앱 바깥에 「개발」 띠를 씌운다', (tester) async {
+    await tester.pumpWidget(
+      const DevFlavorBanner(child: MaterialApp(home: Scaffold())),
+    );
+    final banner = tester.widget<Banner>(find.byType(Banner).first);
+    expect(banner.message, '개발');
+  });
+}

@@ -1,0 +1,32 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
+import 'package:go_router/go_router.dart';
+
+import '../core/firebase/backend_init.dart';
+import 'app.dart';
+import 'flavor.dart';
+
+/// 진입점 공통 시작 순서 — 바탕 준비 → 백엔드 준비 → 앱 그리기.
+///
+/// 개발용 진입점만 넘기는 것 — 실서비스 진입점은 넘기지 않습니다.
+/// - [wrap]: 앱 위에 「개발」 띠를 씌웁니다.
+/// - [overrides]: 주소의 `?state=`로 상태 흉내를 켜는 덮어쓰기 등.
+/// - [devRoutes]·[devBranchRoutes]: 라우터의 개발용 경로 주입 자리(`router.dart`).
+Future<void> bootstrap(
+  AppFlavor flavor, {
+  Widget Function(Widget app)? wrap,
+  List<Override> overrides = const [],
+  List<RouteBase> devRoutes = const [],
+  Map<String, List<RouteBase>> devBranchRoutes = const {},
+}) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initBackend(flavor);
+  final app = App(devRoutes: devRoutes, devBranchRoutes: devBranchRoutes);
+  runApp(
+    ProviderScope(
+      overrides: [appFlavorProvider.overrideWithValue(flavor), ...overrides],
+      child: wrap == null ? app : wrap(app),
+    ),
+  );
+}

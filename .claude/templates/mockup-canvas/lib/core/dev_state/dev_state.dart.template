@@ -1,0 +1,79 @@
+// 상태 흉내 — 화면의 빈 상태·로딩·오류·권한없음과 「로그인 전」 모습을 띄우는 장치.
+//
+// 화면 코드는 이 파일을 읽지 않는다. 저장·조회 코드(각 흐름의 data/ 폴더)가 함수 맨 앞에서
+// devStateAnswer를 불러, 값이 있으면 그 상태의 답(빈 결과·끝나지 않는 응답·실패)을 바로 돌려준다.
+// 화면은 실제 처리 경로대로 그 답을 그리므로, 상태 화면이 실제 앱과 같은 코드로 그려진다.
+//
+// 값을 넣는 길은 둘이다.
+//   1. 목업 캔버스(lib/main_canvas.dart) — 창마다 provider 덮어쓰기로 넣는다(lib/dev/canvas/canvas_phone.dart).
+//   2. 개발용 앱(lib/main_dev.dart) — 라우터가 경로 뒤 질의 `?state=empty`·`?as=guest`를 읽어 넣는다.
+// 실서비스 진입점(lib/main_prod.dart)은 아무것도 넣지 않는다 — 그래서 실서비스에서는 늘 null·false다.
+//
+// 부르는 예 (저장·조회 코드):
+//
+//   final meetingRepositoryProvider = Provider<MeetingRepository>(
+//     (ref) => LocalMeetingRepository(devState: ref.watch(devStateProvider)),
+//   );
+//
+//   Future<Result<List<Meeting>>> listMeetings() async {
+//     final shortcut = await devStateAnswer(
+//       _devState,
+//       empty: () => const Result.ok(<Meeting>[]),
+//       failure: (state) => Result.err(
+//         state == DevState.forbidden ? const AppError.forbidden() : const AppError.network(),
+//       ),
+//     );
+//     if (shortcut != null) return shortcut;
+//     ... 평소 처리 ...
+//   }
+//
+// 지금 로그인한 사람을 읽는 코드는 devGuestProvider를 먼저 보고, 참이면 「로그인 전」으로 답한다.
+
+import 'dart:async';
+
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+/// 띄울 수 있는 상태 — 화면 목록 상태 표의 `?state=` 값과 같은 이름이다.
+enum DevState {
+  empty,
+  loading,
+  error,
+  forbidden;
+
+  /// `?state=` 값 글자를 읽는다. 모르는 값이면 null.
+  static DevState? parse(String? value) {
+    for (final state in values) {
+      if (state.name == value) return state;
+    }
+    return null;
+  }
+}
+
+/// 지금 흉내 낼 상태. 평소(실서비스 포함)에는 null이다.
+final devStateProvider = Provider<DevState?>((ref) => null);
+
+/// 「로그인 전」 흉내. 평소(실서비스 포함)에는 false다.
+final devGuestProvider = Provider<bool>((ref) => false);
+
+/// 저장·조회 함수 맨 앞에서 부른다. [state]가 null이면 null을 돌려주니 평소대로 이어 간다.
+///
+/// - empty → [empty]의 값(빈 목록 등)
+/// - loading → 끝나지 않는 응답. 화면이 로딩 모양에 머문다
+/// - error·forbidden → [failure]가 만든 실패 값
+Future<R?> devStateAnswer<R>(
+  DevState? state, {
+  required R Function() empty,
+  required R Function(DevState failure) failure,
+}) async {
+  switch (state) {
+    case null:
+      return null;
+    case DevState.empty:
+      return empty();
+    case DevState.loading:
+      return Completer<R>().future;
+    case DevState.error:
+    case DevState.forbidden:
+      return failure(state);
+  }
+}

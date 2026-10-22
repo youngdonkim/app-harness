@@ -1,0 +1,43 @@
+// 목업 캔버스 진입점 — iPad 시뮬레이터에서 모든 화면을 흐름 순서로 펼쳐 본다(.claude/templates/mockup-canvas/README.md).
+// Firebase를 켜지 않는다. 저장·조회 provider는 모두 가짜 저장소로 덮어쓴다(lib/dev/fakes/canvas_overrides.dart).
+// 실행 (코멘트 서버 `dart run tool/canvas_server.dart`를 먼저 켠 뒤, 프로젝트 맨 위 폴더에서. fvm을 쓰면 flutter 앞에 fvm):
+//   flutter run -t lib/main_canvas.dart -d "$(basename "$PWD") 캔버스" \
+//     --dart-define=CANVAS_SERVER=http://127.0.0.1:$(cat .dart_tool/canvas_server.port)
+// 기기는 이 프로젝트 전용 아이패드 시뮬레이터 「<폴더 이름> 캔버스」다(idea-to-mvp 2-0 §2.4가 만든다). 다른 프로젝트 이름의
+// 시뮬레이터에 띄우지 않는다. 포트 번호는 코멘트 서버가 뜰 때 .dart_tool/canvas_server.port에 적는다(README 「띄우기」).
+
+import 'package:flutter/material.dart';
+
+import 'app/router.dart';
+import 'core/design/semantic.dart';
+import 'core/design/theme.dart';
+import 'dev/canvas/canvas_app.dart';
+import 'dev/canvas/canvas_config.dart';
+import 'dev/canvas/canvas_shots.dart';
+import 'dev/canvas/screens.dart';
+import 'dev/fakes/canvas_overrides.dart';
+import 'l10n/app_localizations.dart';
+
+/// 캔버스 설정 — 미리보기 그림을 찍는 골든 테스트(test/goldens/canvas_golden_test.dart)도 이 함수를 불러,
+/// 캔버스와 같은 테마·라우터·가짜 저장소·문구 파일로 찍는다.
+CanvasConfig canvasConfig() => CanvasConfig(
+  screens: canvasScreens,
+  theme: buildAppTheme(AppTokens.light),
+  // 창마다 라우터를 새로 만든다 — 함수 안에서 내비게이터 열쇠를 만들어야 한다(README 「프로젝트에 넣는 차례」)
+  createRouter: (container, location) =>
+      createAppRouter(
+        initialLocation: location,
+        // 2-3 비교안: 라우터에 개발용 경로 주입 자리가 있을 때만 켠다(README 「프로젝트에 넣는 차례」 ②). main_prod.dart 는 넘기지 않는다
+        // devBranchRoutes: draftDevBranchRoutes, // lib/dev/drafts/dev_routes.dart
+      ),
+  overrides: canvasFakeOverrides,
+  localizationsDelegates: AppLocalizations.localizationsDelegates,
+  supportedLocales: AppLocalizations.supportedLocales,
+  locale: const Locale('ko'),
+  // 멀리서는 미리보기 그림 — 코멘트 서버가 test/goldens/canvas/의 그림을 내보낸다. 없으면 이름 카드
+  thumbnail: canvasShotThumbnail,
+);
+
+void main() {
+  runApp(CanvasApp(config: canvasConfig()));
+}

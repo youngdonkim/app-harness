@@ -1,0 +1,35 @@
+// ── 조각 ①: android/app/build.gradle.kts 맨 위, plugins { … } 블록 바로 위에 넣습니다 ──
+
+import java.util.Properties
+
+// 업로드 키 — android/key.properties가 있으면 release 서명, 없으면 debug 서명.
+// key.properties는 git에 올리지 않습니다(값은 프로젝트 밖 계정 장부 폴더에 있습니다).
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+// ── 조각 ②: android { … } 블록 안의 기존 buildTypes { … } 를 통째로 이것으로 바꿉니다 ──
+
+    signingConfigs {
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
+        }
+    }

@@ -1,0 +1,15 @@
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'flavor.g.dart';
+
+/// 이 빌드가 어느 쪽 앱인가 — 개발용(dev)·실서비스용(prod).
+///
+/// 진입점(`main_dev.dart`·`main_prod.dart`)이 정하고, 앱 안에서는
+/// [appFlavorProvider]로 읽습니다. 값으로 분기하는 코드는 최소로 둡니다 —
+/// 어느 Firebase 프로젝트에 붙는지는 진입점과 설정 파일이 이미 정했습니다.
+enum AppFlavor { dev, prod }
+
+/// 진입점이 `ProviderScope`의 덮어쓰기로 값을 넣습니다. 넣지 않으면 실패합니다.
+@Riverpod(keepAlive: true)
+AppFlavor appFlavor(Ref ref) =>
+    throw UnimplementedError('appFlavorProvider는 진입점이 덮어써야 합니다');

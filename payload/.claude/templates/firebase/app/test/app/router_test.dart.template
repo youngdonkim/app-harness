@@ -1,0 +1,68 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:<앱>/app/app.dart';
+import 'package:go_router/go_router.dart';
+import 'package:<앱>/app/router.dart';
+import 'package:<앱>/core/dev_state/dev_state.dart';
+import 'package:<앱>/dev/dev_route_state.dart';
+
+/// 화면 목록(`feature-list.md` 6절)의 「주소」 칸 경로를 전부 적습니다 —
+/// 3단계에서 화면을 더할 때마다 한 줄씩 늘립니다. 값이 달라지는 자리(`:id`)는
+/// 견본 값을 넣습니다(예: `/meetings/m1`). `?state=` 같은 물음표 뒤는 적지 않습니다.
+const screenPaths = <String>[
+  '/',
+];
+
+void main() {
+  test('화면 목록의 경로마다 라우터에 맞는 길이 있다', () {
+    final router = createAppRouter();
+    addTearDown(router.dispose);
+    for (final path in screenPaths) {
+      final match = router.configuration.findMatch(Uri.parse(path));
+      expect(match.isError, isFalse, reason: '라우터에 없는 경로: $path');
+    }
+  });
+
+  testWidgets('라우터를 동시에 여러 개 만들어도 열쇠가 겹치지 않는다', (tester) async {
+    final a = createAppRouter();
+    final b = createAppRouter();
+    await tester.pumpWidget(
+      Row(
+        textDirection: TextDirection.ltr,
+        children: [
+          Expanded(child: MaterialApp.router(routerConfig: a)),
+          Expanded(child: MaterialApp.router(routerConfig: b)),
+        ],
+      ),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('개발용 덮어쓰기는 주소의 ?state=를 상태 흉내로 넣는다', (tester) async {
+    final container = ProviderContainer(overrides: devRouteStateOverrides);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const App()),
+    );
+    expect(container.read(devStateProvider), isNull);
+
+    final context = tester.element(find.byType(SizedBox).first);
+    GoRouterHelper(context).go('/?state=empty&as=guest');
+    await tester.pumpAndSettle();
+    expect(container.read(devStateProvider), DevState.empty);
+    expect(container.read(devGuestProvider), isTrue);
+  });
+
+  testWidgets('덮어쓰기가 없으면(실서비스) 상태 흉내는 늘 꺼져 있다', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    await tester.pumpWidget(
+      UncontrolledProviderScope(container: container, child: const App()),
+    );
+    final context = tester.element(find.byType(SizedBox).first);
+    GoRouterHelper(context).go('/?state=empty');
+    await tester.pumpAndSettle();
+    expect(container.read(devStateProvider), isNull);
+  });
+}

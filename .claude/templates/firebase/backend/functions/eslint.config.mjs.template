@@ -1,0 +1,7 @@
+// 서버 함수 린트 — TypeScript 권장 규칙.
+import tseslint from "typescript-eslint";
+
+export default tseslint.config(
+  { ignores: ["lib/**", "node_modules/**"] },
+  ...tseslint.configs.recommended,
+);

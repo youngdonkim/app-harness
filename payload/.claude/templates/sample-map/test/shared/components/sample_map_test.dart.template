@@ -1,0 +1,58 @@
+// 견본 지도 검사 — 테스트 안에서는 빈 자리를 그리는지, 지명을 한글 우선으로 바꾸는 규칙이 맞는지.
+// 지도가 실제로 뜨는지는 사람이 시뮬레이터·폰에서 본다.
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:<앱>/core/design/semantic.dart';
+import 'package:<앱>/core/design/theme.dart';
+import 'package:<앱>/shared/components/common/sample_map.dart';
+
+void main() {
+  testWidgets('테스트 안에서는 지도 대신 빈 자리를 그린다', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(AppTokens.light),
+        home: const Scaffold(
+          body: SampleMap(center: (lat: 37.5665, lng: 126.9780), zoom: 13),
+        ),
+      ),
+    );
+    expect(find.byIcon(Icons.map_outlined), findsOneWidget);
+  });
+
+  test('이름을 읽는 글자 층만 한글 우선으로 바꾼다', () {
+    final style = preferKoreanLabels({
+      'layers': [
+        {
+          'id': 'place',
+          'layout': {
+            'text-field': [
+              'coalesce',
+              ['get', 'name_en'],
+              ['get', 'name'],
+            ],
+          },
+        },
+        {
+          'id': 'road-ref',
+          'layout': {
+            'text-field': [
+              'to-string',
+              ['get', 'ref'],
+            ],
+          },
+        },
+        {'id': 'water'},
+      ],
+    });
+    final layers = (style['layers'] as List).cast<Map<String, dynamic>>();
+    expect(layers[0]['layout']['text-field'], [
+      'coalesce',
+      ['get', 'name:ko'],
+      ['get', 'name'],
+    ]);
+    expect(layers[1]['layout']['text-field'], [
+      'to-string',
+      ['get', 'ref'],
+    ]);
+  });
+}

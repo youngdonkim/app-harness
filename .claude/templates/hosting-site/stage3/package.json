@@ -1,0 +1,6 @@
+{
+  "name": "<저장소 이름>-hosting",
+  "private": true,
+  "description": "3단계에서 Hosting만 먼저 올릴 때 쓰는 Firebase CLI 자리. 4-0에서 저장소 최상위로 옮기고 지운다(README 「4-0에서 합치기」).",
+  "devDependencies": {}
+}

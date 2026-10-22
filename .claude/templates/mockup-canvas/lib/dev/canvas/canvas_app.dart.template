@@ -1,0 +1,1072 @@
+// 목업 캔버스 — 모든 화면을 흐름 순서로 펼쳐 놓고, 확대·이동하며 보고, 고칠 곳에 코멘트 핀을 꽂는 개발용 앱.
+//
+// lib/main_canvas.dart가 띄운다. iPad 시뮬레이터에서 본다(.claude/templates/mockup-canvas/README.md).
+// 판 배치: 왼쪽 → 오른쪽이 흐름 순서(화면 세로줄), 한 화면 세로줄 안은 위 → 아래로 기본 모양·상태·비교안 줄,
+// 한 줄 안은 보통 폰 · 작은 폰 한 쌍.
+//
+// 이 앱 껍데기(목록·단추·핀)는 프로젝트 디자인과 상관없는 개발 도구라 Material 기본 테마로 그린다.
+// 창 안의 화면만 프로젝트 테마(CanvasConfig.theme)로 그린다.
+
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../core/dev_state/dev_state.dart';
+import 'canvas_comments.dart';
+import 'canvas_config.dart';
+import 'canvas_model.dart';
+import 'canvas_phone.dart';
+import 'canvas_shots.dart';
+
+/// 판 배치 숫자(dp) — 캔버스 껍데기 전용
+abstract final class _Layout {
+  static const pad = 160.0;
+  static const viewportGap = 40.0;
+  static const columnGap = 160.0;
+  static const groupGap = 400.0;
+  static const headerHeight = 220.0;
+  static const labelHeight = 64.0;
+  static const rowGap = 120.0;
+
+  /// 이 배율 이상으로 확대해야 실제 화면이 뜬다
+  static const liveMinScale = 0.3;
+
+  /// 실제 화면을 동시에 띄우는 최대 수 — 넘치면 판 가운데에 가까운 창부터
+  static const maxLive = 8;
+}
+
+class CanvasApp extends StatelessWidget {
+  const CanvasApp({super.key, required this.config});
+
+  final CanvasConfig config;
+
+  @override
+  Widget build(BuildContext context) {
+    // 내비게이터를 두지 않는다(builder만 쓴다). 창 안 화면이 「맨 바깥 내비게이터」로 대화상자를 띄울 때
+    // 캔버스 전체가 아니라 그 창의 앱 안에 뜨게 하려는 것이다.
+    return MaterialApp(
+      title: '목업 캔버스',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(useMaterial3: true),
+      builder: (context, _) => Overlay(
+        initialEntries: [
+          OverlayEntry(builder: (_) => CanvasBoard(config: config)),
+        ],
+      ),
+    );
+  }
+}
+
+class CanvasBoard extends StatefulWidget {
+  const CanvasBoard({super.key, required this.config});
+
+  final CanvasConfig config;
+
+  @override
+  State<CanvasBoard> createState() => _CanvasBoardState();
+}
+
+/// 코멘트 달기 모드에서 누른 자리 — 메모 칸이 떠 있는 동안 들고 있는다
+typedef _Pick = ({
+  CanvasFrame frame,
+  Offset position,
+  CanvasCommentTarget target,
+  Offset ratio,
+});
+
+class _CanvasBoardState extends State<CanvasBoard> {
+  late final CanvasCommentStore _store =
+      widget.config.comments ?? HttpCanvasCommentStore();
+  final _transform = TransformationController();
+  final _focus = FocusNode(debugLabel: '목업 캔버스');
+  final _draftText = TextEditingController();
+
+  String? _group; // null이면 전체
+  List<CanvasFrame> _frames = const [];
+  Map<String, Rect> _rects = const {};
+  List<_Header> _headers = const [];
+  Size _scene = Size.zero;
+  Size _viewport = Size.zero;
+  Set<String> _live = const {};
+  bool _fitted = false;
+
+  List<CanvasComment> _comments = const [];
+  bool? _serverOk;
+  CanvasWrongServerException? _wrongServer; // 붙은 서버가 다른 프로젝트의 것일 때
+  bool _commentMode = false;
+  bool _panelOpen = false;
+  bool _showDone = false;
+  bool _sidebarOpen = true;
+  double _textScale = 1.0;
+  _Pick? _pick;
+  String? _saveError;
+  bool _saving = false;
+  CanvasFrame? _enlarged;
+  String? _highlight; // 목록에서 짚은 코멘트 id
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    rememberProjectRoot(widget);
+    _layout();
+    _transform.addListener(_updateLive);
+    _loadComments();
+    _poll = Timer.periodic(const Duration(seconds: 5), (_) => _loadComments());
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    _transform.dispose();
+    _focus.dispose();
+    _draftText.dispose();
+    super.dispose();
+  }
+
+  // ── 배치 ──────────────────────────────────────────────
+
+  List<CanvasScreen> get _screens => _group == null
+      ? widget.config.screens
+      : widget.config.screens
+            .where((screen) => screen.group == _group)
+            .toList();
+
+  void _layout() {
+    final screens = _screens;
+    final frames = buildFrames(screens);
+    final rects = <String, Rect>{};
+    final headers = <_Header>[];
+    final rowHeight =
+        CanvasViewport.values
+            .map((v) => v.size.height)
+            .reduce((a, b) => a > b ? a : b) +
+        _Layout.labelHeight +
+        _Layout.rowGap;
+    var x = _Layout.pad;
+    var maxRows = 1;
+    String? lastGroup;
+    for (var column = 0; column < screens.length; column++) {
+      final screen = screens[column];
+      if (lastGroup != null && screen.group != lastGroup) {
+        x += _Layout.groupGap - _Layout.columnGap;
+      }
+      final widths = CanvasViewport.values.where(
+        (v) => screen.widths.isEmpty || screen.widths.contains(v),
+      );
+      final columnWidth =
+          widths.fold(0.0, (sum, v) => sum + v.size.width) +
+          _Layout.viewportGap * (widths.length - 1);
+      headers.add(
+        _Header(
+          screen: screen,
+          showGroup: screen.group != lastGroup,
+          rect: Rect.fromLTWH(
+            x,
+            _Layout.pad,
+            columnWidth,
+            _Layout.headerHeight,
+          ),
+        ),
+      );
+      for (final frame in frames.where((f) => f.column == column)) {
+        var left = x;
+        for (final v in widths) {
+          if (v == frame.viewport) break;
+          left += v.size.width + _Layout.viewportGap;
+        }
+        final top =
+            _Layout.pad +
+            _Layout.headerHeight +
+            frame.row * rowHeight +
+            _Layout.labelHeight;
+        rects[frame.key] = Rect.fromLTWH(
+          left,
+          top,
+          frame.viewport.size.width,
+          frame.viewport.size.height,
+        );
+        if (frame.row + 1 > maxRows) maxRows = frame.row + 1;
+      }
+      x += columnWidth + _Layout.columnGap;
+      lastGroup = screen.group;
+    }
+    _frames = frames;
+    _rects = rects;
+    _headers = headers;
+    _scene = Size(
+      x - _Layout.columnGap + _Layout.pad,
+      _Layout.pad * 2 + _Layout.headerHeight + maxRows * rowHeight,
+    );
+  }
+
+  void _selectGroup(String? group) {
+    setState(() {
+      _group = group;
+      _layout();
+      _fitted = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fit());
+  }
+
+  void _fit() {
+    if (_viewport.isEmpty || _scene.isEmpty) return;
+    final scale = (_viewport.width / _scene.width)
+        .clamp(0.0, _viewport.height / _scene.height)
+        .clamp(0.02, 1.0)
+        .toDouble();
+    final dx = (_viewport.width - _scene.width * scale) / 2;
+    final dy = (_viewport.height - _scene.height * scale) / 2;
+    _transform.value = Matrix4.identity()
+      ..translateByDouble(dx > 0 ? dx : 0, dy > 0 ? dy : 0, 0, 1)
+      ..scaleByDouble(scale, scale, scale, 1);
+    _fitted = true;
+  }
+
+  void _zoom(double factor) {
+    final center = _viewport.center(Offset.zero);
+    final scene = _transform.toScene(center);
+    final scale = (_transform.value.getMaxScaleOnAxis() * factor).clamp(
+      0.02,
+      3.0,
+    );
+    _transform.value = Matrix4.identity()
+      ..translateByDouble(
+        center.dx - scene.dx * scale,
+        center.dy - scene.dy * scale,
+        0,
+        1,
+      )
+      ..scaleByDouble(scale, scale, scale, 1);
+  }
+
+  void _focusFrame(CanvasFrame frame, {double scale = 0.8}) {
+    final rect = _rects[frame.key];
+    if (rect == null) return;
+    final center = _viewport.center(Offset.zero);
+    _transform.value = Matrix4.identity()
+      ..translateByDouble(
+        center.dx - rect.center.dx * scale,
+        center.dy - rect.center.dy * scale,
+        0,
+        1,
+      )
+      ..scaleByDouble(scale, scale, scale, 1);
+  }
+
+  /// 확대 배율과 보이는 자리를 보고 실제 화면으로 띄울 창을 고른다
+  void _updateLive() {
+    final scale = _transform.value.getMaxScaleOnAxis();
+    var live = <String>{};
+    if (scale >= _Layout.liveMinScale && !_viewport.isEmpty) {
+      final topLeft = _transform.toScene(Offset.zero);
+      final bottomRight = _transform.toScene(
+        _viewport.bottomRight(Offset.zero),
+      );
+      final visible = Rect.fromPoints(topLeft, bottomRight);
+      final center = visible.center;
+      final candidates =
+          _frames.where((f) => _rects[f.key]!.overlaps(visible)).toList()..sort(
+            (a, b) => (_rects[a.key]!.center - center).distanceSquared
+                .compareTo((_rects[b.key]!.center - center).distanceSquared),
+          );
+      live = candidates.take(_Layout.maxLive).map((f) => f.key).toSet();
+    }
+    if (!_sameSet(live, _live)) setState(() => _live = live);
+  }
+
+  static bool _sameSet(Set<String> a, Set<String> b) =>
+      a.length == b.length && a.containsAll(b);
+
+  // ── 코멘트 ────────────────────────────────────────────
+
+  Future<void> _loadComments() async {
+    try {
+      final comments = await _store.list();
+      if (!mounted) return;
+      setState(() {
+        _comments = comments;
+        _serverOk = true;
+        _wrongServer = null;
+      });
+    } on CanvasWrongServerException catch (error) {
+      // 다른 프로젝트의 코멘트를 이 판에 꽂지 않는다
+      if (mounted) {
+        setState(() {
+          _comments = const [];
+          _serverOk = false;
+          _wrongServer = error;
+        });
+      }
+    } catch (_) {
+      if (mounted && (_serverOk != false || _wrongServer != null)) {
+        setState(() {
+          _serverOk = false;
+          _wrongServer = null;
+        });
+      }
+    }
+  }
+
+  int _numberOf(CanvasComment comment) => _comments.indexOf(comment) + 1;
+
+  List<(int, CanvasComment)> _pinsFor(CanvasFrame frame) => [
+    for (final comment in _comments)
+      if (comment.isOpen && comment.belongsTo(frame))
+        (_numberOf(comment), comment),
+  ];
+
+  void _onPick(
+    CanvasFrame frame,
+    Offset position,
+    CanvasCommentTarget target,
+    Offset ratio,
+  ) {
+    setState(() {
+      _pick = (frame: frame, position: position, target: target, ratio: ratio);
+      _saveError = null;
+      _draftText.clear();
+    });
+  }
+
+  Future<void> _savePick() async {
+    final pick = _pick;
+    final text = _draftText.text.trim();
+    if (pick == null || text.isEmpty || _saving) return;
+    setState(() => _saving = true);
+    try {
+      await _store.add(
+        newCommentBody(
+          frame: pick.frame,
+          target: pick.target,
+          position: pick.position,
+          ratio: pick.ratio,
+          comment: text,
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _pick = null;
+        _saving = false;
+      });
+      await _loadComments();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _saveError = error is CanvasWrongServerException
+            ? '$error'
+            : '코멘트 서버에 닿지 않습니다. 맥 터미널의 프로젝트 맨 위 폴더에서 '
+                  '`dart run tool/canvas_server.dart`를 켠 뒤 다시 눌러 주세요.';
+      });
+    }
+  }
+
+  Future<void> _setStatus(CanvasComment comment, String status) async {
+    try {
+      await _store.update(comment.id, status: status);
+      await _loadComments();
+    } on CanvasWrongServerException catch (error) {
+      if (mounted) {
+        setState(() {
+          _serverOk = false;
+          _wrongServer = error;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _serverOk = false);
+    }
+  }
+
+  void _findComment(CanvasComment comment) {
+    CanvasFrame? match() {
+      for (final frame in _frames) {
+        if (comment.belongsTo(frame)) return frame;
+      }
+      return null;
+    }
+
+    if (match() == null && _group != null) {
+      setState(() {
+        _group = null;
+        _layout();
+      });
+    }
+    final frame = match();
+    setState(() => _highlight = comment.id);
+    if (frame != null) _focusFrame(frame);
+  }
+
+  // ── 키 ────────────────────────────────────────────────
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    final typing =
+        FocusManager.instance.primaryFocus?.context?.widget is EditableText;
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      setState(() {
+        if (_pick != null) {
+          _pick = null;
+        } else if (_enlarged != null) {
+          _enlarged = null;
+        } else {
+          _commentMode = false;
+        }
+      });
+      return KeyEventResult.handled;
+    }
+    if (!typing && event.logicalKey == LogicalKeyboardKey.keyC) {
+      setState(() => _commentMode = !_commentMode);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  // ── 그리기 ────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Focus(
+      focusNode: _focus,
+      autofocus: true,
+      onKeyEvent: _onKey,
+      child: Scaffold(
+        backgroundColor: colors.surfaceContainerLow,
+        body: Row(
+          children: [
+            if (_sidebarOpen) _sidebar(context),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final size = constraints.biggest;
+                  if (size != _viewport) {
+                    _viewport = size;
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!_fitted) _fit();
+                      _updateLive();
+                    });
+                  }
+                  return Stack(
+                    children: [
+                      Positioned.fill(child: _board(context)),
+                      Positioned(top: 12, left: 12, child: _sidebarToggle()),
+                      Positioned(
+                        top: 12,
+                        right: 12,
+                        child: _commentBar(context),
+                      ),
+                      Positioned(
+                        bottom: 12,
+                        right: 12,
+                        child: _viewBar(context),
+                      ),
+                      if (_commentMode && _enlarged == null)
+                        Positioned(
+                          top: 12,
+                          left: 0,
+                          right: 0,
+                          child: Center(child: _hint(context)),
+                        ),
+                      if (_panelOpen)
+                        Positioned(
+                          top: 72,
+                          right: 12,
+                          bottom: 72,
+                          width: 380,
+                          child: _commentPanel(context),
+                        ),
+                      if (_enlarged != null)
+                        Positioned.fill(child: _enlargedView(context)),
+                      if (_pick != null)
+                        Positioned.fill(child: _pickCard(context)),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sidebar(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final screens = widget.config.screens;
+    Widget item(String? group, String label, int count) => ListTile(
+      selected: _group == group,
+      title: Text(label),
+      trailing: Badge.count(count: count, backgroundColor: colors.secondary),
+      onTap: () => _selectGroup(group),
+    );
+    return Material(
+      color: colors.surface,
+      child: SizedBox(
+        width: 280,
+        child: SafeArea(
+          right: false,
+          child: ListView(
+            padding: const EdgeInsets.only(top: 56, bottom: 24),
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Text('흐름 묶음', style: text.titleMedium),
+              ),
+              item(null, '전체', screens.length),
+              for (final group in groupsOf(screens))
+                item(
+                  group,
+                  group,
+                  screens.where((s) => s.group == group).length,
+                ),
+              if (screens.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    '띄울 화면이 없습니다. 화면 목록의 「주소」 칸을 채운 뒤 목록 파일을 다시 만드세요.',
+                    style: text.bodyMedium,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _sidebarToggle() => IconButton.filledTonal(
+    tooltip: _sidebarOpen ? '흐름 묶음 목록 닫기' : '흐름 묶음 목록 열기',
+    icon: Icon(_sidebarOpen ? Icons.menu_open : Icons.menu),
+    onPressed: () => setState(() => _sidebarOpen = !_sidebarOpen),
+  );
+
+  Widget _board(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return InteractiveViewer(
+      transformationController: _transform,
+      constrained: false,
+      boundaryMargin: const EdgeInsets.all(double.infinity),
+      minScale: 0.02,
+      maxScale: 3,
+      onInteractionEnd: (_) => setState(_updateLive),
+      child: SizedBox.fromSize(
+        size: _scene,
+        child: Stack(
+          children: [
+            for (final header in _headers)
+              Positioned.fromRect(
+                rect: header.rect,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (header.showGroup)
+                      Text(
+                        header.screen.group,
+                        style: text.displaySmall?.copyWith(
+                          color: colors.primary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.visible,
+                        softWrap: false,
+                      ),
+                    Text(
+                      '${header.screen.id}  ${header.screen.name}',
+                      style: text.headlineMedium,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            for (final frame in _frames) ..._frameWidgets(context, frame),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _frameWidgets(BuildContext context, CanvasFrame frame) {
+    final rect = _rects[frame.key]!;
+    final text = Theme.of(context).textTheme;
+    final open = _pinsFor(frame).length;
+    return [
+      Positioned(
+        left: rect.left,
+        top: rect.top - _Layout.labelHeight,
+        width: rect.width,
+        height: _Layout.labelHeight,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                frame.label,
+                style: text.titleLarge,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (open > 0) Badge.count(count: open, largeSize: 24),
+            TextButton(
+              onPressed: () => setState(() => _enlarged = frame),
+              child: const Text('크게'),
+            ),
+          ],
+        ),
+      ),
+      Positioned.fromRect(
+        rect: rect,
+        child: _live.contains(frame.key)
+            ? CanvasPhone(
+                key: ValueKey('${frame.key}@$_textScale'),
+                frame: frame,
+                config: widget.config,
+                textScale: _textScale,
+                commentMode: _commentMode,
+                pins: _pinsFor(frame),
+                onPick: _onPick,
+                onPinTap: (comment) => setState(() {
+                  _panelOpen = true;
+                  _highlight = comment.id;
+                }),
+              )
+            : _thumbnail(context, frame),
+      ),
+    ];
+  }
+
+  Widget _thumbnail(BuildContext context, CanvasFrame frame) {
+    final colors = Theme.of(context).colorScheme;
+    final picture = widget.config.thumbnail?.call(context, frame);
+    return GestureDetector(
+      onTap: () => setState(() => _enlarged = frame),
+      child: Container(
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: colors.outlineVariant, width: 2),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: picture ?? CanvasNameCard(frame: frame),
+      ),
+    );
+  }
+
+  Widget _hint(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.inverseSurface,
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Text(
+          '코멘트를 남길 자리를 누르세요. 작은 그림은 눌러 크게 연 뒤 누릅니다. 끄려면 C 또는 Esc.',
+          style: TextStyle(color: colors.onInverseSurface),
+        ),
+      ),
+    );
+  }
+
+  Widget _commentBar(BuildContext context) {
+    final open = _comments.where((c) => c.isOpen).length;
+    return Material(
+      elevation: 2,
+      borderRadius: BorderRadius.circular(28),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Tooltip(
+              message: '코멘트 달기 (C)',
+              child: FilterChip(
+                selected: _commentMode,
+                avatar: const Icon(Icons.add_comment_outlined),
+                label: const Text('코멘트 달기'),
+                onSelected: (value) => setState(() => _commentMode = value),
+              ),
+            ),
+            const SizedBox(width: 6),
+            FilterChip(
+              selected: _panelOpen,
+              avatar: _serverOk == false ? const Icon(Icons.cloud_off) : null,
+              label: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('코멘트 보기'),
+                  if (open > 0) ...[
+                    const SizedBox(width: 6),
+                    Badge.count(count: open),
+                  ],
+                ],
+              ),
+              onSelected: (value) => setState(() => _panelOpen = value),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _viewBar(BuildContext context) {
+    final scale = _transform.value.getMaxScaleOnAxis();
+    return Material(
+      elevation: 2,
+      borderRadius: BorderRadius.circular(28),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: Text('글자'),
+            ),
+            SegmentedButton<double>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: 1.0, label: Text('1.0')),
+                ButtonSegment(value: 1.3, label: Text('1.3')),
+                ButtonSegment(value: 2.0, label: Text('2.0')),
+              ],
+              selected: {_textScale},
+              onSelectionChanged: (value) =>
+                  setState(() => _textScale = value.first),
+            ),
+            const SizedBox(width: 12),
+            IconButton(
+              tooltip: '축소',
+              icon: const Icon(Icons.remove),
+              onPressed: () => setState(() => _zoom(0.8)),
+            ),
+            SizedBox(
+              width: 56,
+              child: Text(
+                '${(scale * 100).round()}%',
+                textAlign: TextAlign.center,
+              ),
+            ),
+            IconButton(
+              tooltip: '확대',
+              icon: const Icon(Icons.add),
+              onPressed: () => setState(() => _zoom(1.25)),
+            ),
+            TextButton(
+              onPressed: () => setState(_fit),
+              child: const Text('화면에 맞추기'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _commentPanel(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final shown = _comments.where((c) => _showDone || c.isOpen).toList();
+    final open = _comments.where((c) => c.isOpen).length;
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+            child: Row(
+              children: [
+                Expanded(child: Text('코멘트', style: text.titleLarge)),
+                IconButton(
+                  tooltip: '다시 읽기',
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _loadComments,
+                ),
+                IconButton(
+                  tooltip: '닫기',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => setState(() => _panelOpen = false),
+                ),
+              ],
+            ),
+          ),
+          if (_serverOk == false)
+            Container(
+              color: colors.errorContainer,
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                _wrongServer?.toString() ??
+                    '코멘트 서버에 닿지 않습니다. 맥 터미널의 프로젝트 맨 위 폴더에서 '
+                        '`dart run tool/canvas_server.dart`를 켜 주세요.',
+                style: TextStyle(color: colors.onErrorContainer),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: open > 0
+                ? Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '열린 코멘트 $open개 — Claude Code에 이렇게 말하면 모두 고칩니다: 「코멘트 반영해줘」',
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Clipboard.setData(
+                            const ClipboardData(text: '코멘트 반영해줘'),
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('복사했습니다')),
+                          );
+                        },
+                        child: const Text('복사'),
+                      ),
+                    ],
+                  )
+                : const Text(
+                    '① 「코멘트 달기」를 켜고 화면을 누릅니다 ② 메모를 적고 핀을 꽂습니다 '
+                    '③ Claude Code에 「코멘트 반영해줘」라고 말합니다.',
+                  ),
+          ),
+          SwitchListTile(
+            title: const Text('끝난 것도 보기'),
+            value: _showDone,
+            onChanged: (value) => setState(() => _showDone = value),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView.separated(
+              itemCount: shown.length,
+              separatorBuilder: (_, _) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final comment = shown[index];
+                final state = devStateLabel(DevState.parse(comment.state));
+                final viewport =
+                    CanvasViewport.parse(comment.viewport)?.label ??
+                    comment.viewport;
+                return Container(
+                  color: _highlight == comment.id
+                      ? colors.secondaryContainer
+                      : null,
+                  padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${_numberOf(comment)}. ${comment.screenId} ${comment.screenName}'
+                        '${comment.draft == null ? '' : ' · ${comment.draft}'} · $viewport · $state',
+                        style: text.labelLarge,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(comment.comment, style: text.bodyLarge),
+                      if (comment.target.source != null)
+                        Text(comment.target.source!, style: text.bodySmall),
+                      if (!comment.isOpen && comment.resolution.isNotEmpty)
+                        Text(
+                          '처리: ${comment.resolution}',
+                          style: text.bodyMedium,
+                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => _findComment(comment),
+                            child: const Text('캔버스에서 찾기'),
+                          ),
+                          TextButton(
+                            onPressed: () => _setStatus(
+                              comment,
+                              comment.isOpen ? 'done' : 'open',
+                            ),
+                            child: Text(comment.isOpen ? '완료 표시' : '다시 열기'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _enlargedView(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final frame = _enlarged!;
+    final widths = frame.screen.widths.isEmpty
+        ? CanvasViewport.values
+        : frame.screen.widths;
+    return Material(
+      color: colors.surfaceContainerHigh,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${frame.screen.id} ${frame.screen.name} · ${frame.label}',
+                      style: text.titleLarge,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (widths.length > 1)
+                    SegmentedButton<CanvasViewport>(
+                      showSelectedIcon: false,
+                      segments: [
+                        for (final v in widths)
+                          ButtonSegment(value: v, label: Text(v.label)),
+                      ],
+                      selected: {frame.viewport},
+                      onSelectionChanged: (value) => setState(() {
+                        _enlarged = CanvasFrame(
+                          screen: frame.screen,
+                          draft: frame.draft,
+                          viewport: value.first,
+                          state: frame.state,
+                          column: frame.column,
+                          row: frame.row,
+                        );
+                      }),
+                    ),
+                  const SizedBox(width: 8),
+                  FilterChip(
+                    selected: _commentMode,
+                    avatar: const Icon(Icons.add_comment_outlined),
+                    label: const Text('코멘트 달기'),
+                    onSelected: (value) => setState(() => _commentMode = value),
+                  ),
+                  IconButton(
+                    tooltip: '닫기 (Esc)',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => setState(() => _enlarged = null),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: FittedBox(
+                  key: const ValueKey('canvas-enlarged'),
+                  child: CanvasPhone(
+                    key: ValueKey('enlarged:${frame.key}@$_textScale'),
+                    frame: frame,
+                    config: widget.config,
+                    textScale: _textScale,
+                    commentMode: _commentMode,
+                    pins: _pinsFor(frame),
+                    onPick: _onPick,
+                    onPinTap: (comment) => setState(() {
+                      _panelOpen = true;
+                      _highlight = comment.id;
+                    }),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _pickCard(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final pick = _pick!;
+    final target = pick.target;
+    final clue = [
+      if (target.component != null) target.component!,
+      if (target.text.isNotEmpty) '「${target.text}」',
+      if (target.source != null) target.source!,
+    ].join(' · ');
+    return ColoredBox(
+      color: colors.scrim.withValues(alpha: 0.32),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(16),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('코멘트 남기기', style: text.titleLarge),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${pick.frame.screen.id} ${pick.frame.screen.name} · ${pick.frame.label}',
+                    style: text.labelLarge,
+                  ),
+                  if (clue.isNotEmpty)
+                    Text('누른 자리: $clue', style: text.bodySmall),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _draftText,
+                    autofocus: true,
+                    minLines: 2,
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: '무엇을 어떻게 고치면 좋을지 적어 주세요',
+                    ),
+                  ),
+                  if (_saveError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_saveError!, style: TextStyle(color: colors.error)),
+                  ],
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => setState(() => _pick = null),
+                        child: const Text('취소'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: _saving ? null : _savePick,
+                        child: Text(_saving ? '저장 중' : '핀 꽂기'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Header {
+  const _Header({
+    required this.screen,
+    required this.showGroup,
+    required this.rect,
+  });
+
+  final CanvasScreen screen;
+  final bool showGroup;
+  final Rect rect;
+}

@@ -1,0 +1,14 @@
+{
+  "parameters": {
+    "min_version": {
+      "defaultValue": { "value": "1.0.0" },
+      "valueType": "STRING",
+      "description": "이보다 낮은 판의 앱은 강제 업데이트 화면을 띄웁니다. 첫 실서비스 판에서는 지금 판(pubspec.yaml의 version 앞부분)으로 둡니다."
+    },
+    "latest_version": {
+      "defaultValue": { "value": "1.0.0" },
+      "valueType": "STRING",
+      "description": "이보다 낮은 판의 앱에 업데이트를 권합니다. 첫 실서비스 판에서는 지금 판으로 둡니다."
+    }
+  }
+}

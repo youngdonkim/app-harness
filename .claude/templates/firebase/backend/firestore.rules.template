@@ -1,0 +1,56 @@
+rules_version = '2';
+
+// Firestore 보안 규칙 — 앱의 유일한 벽입니다.
+//
+// 원칙
+// 1. 기본은 전부 거부. 컬렉션마다 match를 열어 필요한 것만 허락합니다.
+// 2. 보호 필드(결제·구독 상태·포인트·카운터처럼 사용자가 바꾸면 안 되는 필드)는
+//    앱의 쓰기를 막고 서버 함수만 씁니다(서버 함수는 관리자 권한이라 규칙을 거치지 않음).
+//    보호 필드를 바꿀 때는 이 파일·보호 필드 표(`mvp/backend-build.md` 「보호 필드」 절)·rules-test/를 한 커밋에서 함께 고칩니다.
+// 3. 웹 폼으로 받는 컬렉션(계정 삭제 요청 등)은 클라이언트 읽기·쓰기를 전부 막습니다.
+//    폼은 HTTP 서버 함수로 보내고, 함수가 검사한 뒤 관리자 권한으로 씁니다
+//    (웹 페이지에는 App Check 토큰이 없어, Firestore에 바로 쓰면 App Check 강제를 켤 때 막힙니다).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // 새 문서가 보호 필드를 하나도 담지 않는가(만들 때).
+    function createsNone(fields) {
+      return !request.resource.data.keys().hasAny(fields);
+    }
+
+    // 이번 고치기가 보호 필드를 하나도 바꾸지 않는가(고칠 때).
+    function changesNone(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // 예: 사용자 문서 — 본인만 읽고 쓰되, 보호 필드는 앱이 못 씀.
+    match /users/{uid} {
+      // 이 컬렉션의 보호 필드 — 서버 함수만 씁니다.
+      function protectedFields() {
+        return ['plan', 'points'];
+      }
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid) && createsNone(protectedFields());
+      allow update: if isOwner(uid) && changesNone(protectedFields());
+      allow delete: if false;
+    }
+
+    // 예: 웹 폼 컬렉션 — 서버 함수(functions/src/deletion/)만 씁니다. 앱·웹 어디서도 읽기·쓰기 불가.
+    match /deletionRequests/{requestId} {
+      allow read, write: if false;
+    }
+
+    // 위에 없는 경로는 전부 거부(규칙에 match가 없으면 거부되지만, 뜻을 드러내려고 적어 둠).
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

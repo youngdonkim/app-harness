@@ -1,0 +1,11 @@
+// 서버 함수 진입점 — 기능 폴더의 함수를 여기서 내보냅니다.
+// 리전은 모든 함수에 한 번에 적용합니다(함수마다 따로 적지 않음).
+import { setGlobalOptions } from "firebase-functions/v2";
+import { initializeApp } from "firebase-admin/app";
+import { REGION } from "./config/region.js";
+
+setGlobalOptions({ region: REGION, maxInstances: 10 });
+initializeApp();
+
+export { greeting } from "./example/greeting.js";
+export { deletionRequest } from "./deletion/deletion-request.js";

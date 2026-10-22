@@ -1,0 +1,66 @@
+# --- 운영체제·편집기 ---
+.DS_Store
+*.iml
+.idea/
+*.swp
+
+# --- Flutter·Dart ---
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+coverage/
+# fvm이 받아 둔 Flutter 본체·연결 고리. 판 정본인 .fvmrc는 올린다.
+.fvm/
+# 골든 테스트가 실패할 때 남기는 비교 그림
+test/**/failures/
+
+# --- Node(Firebase CLI·서버 함수·보안 규칙 테스트) ---
+node_modules/
+functions/lib/
+npm-debug.log*
+
+# --- Firebase ---
+.firebase/
+firebase-debug.log*
+firebase-debug.*.log
+firestore-debug.log
+storage-debug.log
+database-debug.log
+pubsub-debug.log
+ui-debug.log
+# FlutterFire 설정 파일(firebase_options_*.dart·google-services.json·GoogleService-Info.plist)은
+# 공개 식별값이라 올린다 — CI 빌드에 필요하다.
+
+# --- 비밀값: 앱 서명·키 파일·환경 값 ---
+# 업로드 키와 그 비밀번호 파일은 프로젝트 밖 장부 폴더(~/.config/harness/keys/)에 둔다.
+# 실수로 프로젝트 안에 생겨도 올라가지 않게 막아 둔다.
+key.properties
+*.jks
+*.keystore
+*.p12
+*.p8
+*.mobileprovision
+# 서비스 계정 키(JSON)
+*service-account*.json
+*serviceAccount*.json
+# 빌드 때 넣는 공개 설정 값(MMP 앱 키 등) — 예시 파일만 올린다
+env/*.json
+!env/*.example.json
+# 실행기의 프로젝트 전용 키(.env.cli) 등
+.env
+.env.*
+!.env.example
+
+# --- fastlane ---
+fastlane/report.xml
+fastlane/Preferences.binary
+fastlane/test_output/
+
+# 골든 비교가 실패할 때 생기는 차이 그림
+test/goldens/failures/
+
+# --- 2-3 비교안 자기 점검·트렌드 조사 그림(사람이 판을 고를 때까지만 필요) ---
+.draft-checks/

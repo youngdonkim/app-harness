@@ -1,0 +1,9 @@
+import 'app/bootstrap.dart';
+import 'app/flavor.dart';
+
+/// 실서비스 진입점 — 실서비스 Firebase 프로젝트에 붙습니다.
+///
+/// `lib/dev/`를 불러오면 안 됩니다(검사가 막음).
+/// 라우터의 개발용 경로(`devRoutes`·`devBranchRoutes`)는 넘기지 않습니다.
+/// `fvm flutter build appbundle --release --flavor prod -t lib/main_prod.dart`
+Future<void> main() => bootstrap(AppFlavor.prod);

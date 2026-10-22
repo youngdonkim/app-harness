@@ -1,0 +1,6 @@
+# fastlane 판 고정 — 프로젝트 맨 위에 둡니다(fastlane 공식 안내의 자리).
+# 판 숫자는 여기 적지 않습니다. `bundle install`이 만든 Gemfile.lock이 판을 기록하고, 둘 다 git에 올립니다.
+# 부를 때는 실행기를 앞에 붙이고 main에서만 돌립니다(감시 훅이 막습니다) — 틀 README 「부르는 꼴」.
+source "https://rubygems.org"
+
+gem "fastlane"

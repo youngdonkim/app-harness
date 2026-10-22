@@ -1,0 +1,134 @@
+// 화면 목록 문서(mvp/feature-list.md)의 표 읽기 — 목록 만들기(canvas_list.dart)와 상태 칸 채우기(state_fill.dart)가 함께 쓴다.
+//
+// 표는 절 번호가 아니라 머리줄의 칸 이름으로 찾고, 칸도 번호가 아니라 이름으로 찾는다.
+// 그래서 문서의 절 순서나 표의 칸 순서가 바뀌어도 그대로 돈다. 칸 이름을 바꾸면 여기 이름도 같이 바꾼다.
+//   화면 목록 표 — 머리줄에 [screenRequiredColumns]가 모두 있는 첫 표
+//   상태 표     — 머리줄에 [stateColumns]의 이름이 둘 이상 있는 첫 표(화면 목록 표가 아닌 것)
+
+/// 화면 목록 문서 자리 — 프로젝트 맨 위 폴더 기준
+const featureListPath = 'mvp/feature-list.md';
+
+/// 화면 목록 표에 꼭 있어야 하는 칸
+const screenRequiredColumns = ['ID', '화면 이름', 'MVP 포함', '주소'];
+
+/// 화면 목록 표에 있으면 쓰는 칸
+const screenGroupColumn = '흐름 묶음';
+const screenRoleColumn = '역할';
+
+/// 「역할」 칸이 이 말로 시작하면 「로그인 전」으로 띄운다
+const guestRole = '비로그인 방문자';
+
+/// 상태 표의 칸 이름 → `?state=` 값. 순서가 곧 캔버스에서 줄을 짓는 순서다.
+const stateColumns = {
+  '빈 상태': 'empty',
+  '로딩': 'loading',
+  '오류': 'error',
+  '권한없음': 'forbidden',
+};
+
+/// 화면 ID — `S-01` 꼴. 칸 앞머리에서 읽는다.
+final screenIdPattern = RegExp(r'^S-[0-9A-Za-z-]+');
+
+/// 문서 안 표 하나 — 줄 번호를 들고 있어서, 읽은 자리에 바로 고쳐 쓸 수 있다.
+class MarkdownTable {
+  MarkdownTable({
+    required this.headerLine,
+    required this.head,
+    required this.rowLines,
+  });
+
+  /// 머리줄의 줄 번호(0부터)
+  final int headerLine;
+
+  /// 칸 이름 — 굵게 표시(**)·코드 표시(`)는 떼고 읽는다
+  final List<String> head;
+
+  /// 데이터 행의 줄 번호들(구분줄 `|---|` 제외)
+  final List<int> rowLines;
+
+  /// 그 이름의 칸 번호. 없으면 -1
+  int column(String name) => head.indexOf(name);
+}
+
+/// 표 한 줄을 칸으로 나눈다. `\|`는 칸 나눔이 아니라 글자다.
+List<String> splitCells(String line) {
+  var text = line.trim();
+  if (text.startsWith('|')) text = text.substring(1);
+  if (text.endsWith('|') && !text.endsWith(r'\|')) {
+    text = text.substring(0, text.length - 1);
+  }
+  final cells = <String>[];
+  final buffer = StringBuffer();
+  for (var i = 0; i < text.length; i++) {
+    final char = text[i];
+    if (char == r'\' && i + 1 < text.length && text[i + 1] == '|') {
+      buffer.write('|');
+      i++;
+    } else if (char == '|') {
+      cells.add(buffer.toString().trim());
+      buffer.clear();
+    } else {
+      buffer.write(char);
+    }
+  }
+  cells.add(buffer.toString().trim());
+  return cells;
+}
+
+/// 칸 글자를 한 줄로 다시 잇는다. 글자 속 `|`는 `\|`로 적는다.
+String joinCells(List<String> cells) =>
+    '| ${cells.map((c) => c.replaceAll('|', r'\|')).join(' | ')} |';
+
+String _headName(String cell) =>
+    cell.replaceAll('**', '').replaceAll('`', '').trim();
+
+bool _isDivider(String line) =>
+    RegExp(r'^\|?[\s:|-]+\|?$').hasMatch(line.trim()) && line.contains('-');
+
+/// 문서 안의 표를 모두 찾는다 — 머리줄 바로 아래에 구분줄(`|---|`)이 있는 것만 표로 친다.
+List<MarkdownTable> findTables(List<String> lines) {
+  final tables = <MarkdownTable>[];
+  var i = 0;
+  while (i < lines.length) {
+    final line = lines[i].trim();
+    if (line.startsWith('|') &&
+        i + 1 < lines.length &&
+        _isDivider(lines[i + 1])) {
+      final header = i;
+      final rows = <int>[];
+      i += 2;
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        rows.add(i);
+        i++;
+      }
+      tables.add(
+        MarkdownTable(
+          headerLine: header,
+          head: splitCells(lines[header]).map(_headName).toList(),
+          rowLines: rows,
+        ),
+      );
+    } else {
+      i++;
+    }
+  }
+  return tables;
+}
+
+/// 화면 목록 표
+MarkdownTable? findScreenTable(List<MarkdownTable> tables) {
+  for (final table in tables) {
+    if (screenRequiredColumns.every(table.head.contains)) return table;
+  }
+  return null;
+}
+
+/// 상태 표
+MarkdownTable? findStateTable(List<MarkdownTable> tables) {
+  for (final table in tables) {
+    if (screenRequiredColumns.every(table.head.contains)) continue;
+    final found = stateColumns.keys.where(table.head.contains).length;
+    if (found >= 2) return table;
+  }
+  return null;
+}

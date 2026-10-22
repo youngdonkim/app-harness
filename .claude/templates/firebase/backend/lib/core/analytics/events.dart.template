@@ -1,0 +1,36 @@
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+import '../firebase/firebase_providers.dart';
+
+part 'events.g.dart';
+
+/// 계측 이벤트를 모아 두는 유일한 파일.
+///
+/// 규칙
+/// - 이벤트 하나 = 이 클래스의 공개 함수 하나. 화면은 `logEvent`를 직접
+///   부르지 않고 이 함수를 부릅니다.
+/// - 함수를 만들면 같은 작업에서 부르는 곳도 만듭니다.
+///   `tool/check_analytics_events.dart`가 「이 파일 밖에서 한 번도 안 불린
+///   함수」와 「이 파일 밖의 `logEvent`」를 찾아 실패시킵니다.
+/// - 이벤트 이름은 소문자와 밑줄(`sign_up`)로 씁니다. 가입처럼 GA4가 권장 이벤트 이름을 정해 둔 것은 그 이름을 그대로 씁니다.
+///
+/// 예:
+/// ```dart
+/// Future<void> signUp({required String method}) =>
+///     _log('sign_up', {'method': method});
+/// ```
+class AnalyticsEvents {
+  AnalyticsEvents(this._analytics);
+
+  final FirebaseAnalytics _analytics;
+
+  // 이벤트 함수가 하나도 없을 때만 필요한 줄 — 첫 이벤트를 넣으면 지웁니다.
+  // ignore: unused_element
+  Future<void> _log(String name, [Map<String, Object>? parameters]) =>
+      _analytics.logEvent(name: name, parameters: parameters);
+}
+
+@Riverpod(keepAlive: true)
+AnalyticsEvents analyticsEvents(Ref ref) =>
+    AnalyticsEvents(ref.watch(firebaseAnalyticsProvider));

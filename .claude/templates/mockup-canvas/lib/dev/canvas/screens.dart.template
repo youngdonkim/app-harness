@@ -1,0 +1,44 @@
+// 목업 캔버스 목록 파일의 손 부분 — 사람이(또는 AI가) 손으로 더하는 것만 적는다. 스크립트는 이 파일을 덮어쓰지 않는다.
+//   · canvasOverrides — 자동 목록(screens.generated.dart)의 화면 하나를 화면 ID로 골라 필드를 바꾸거나 더한다.
+//   · canvasExtraScreens — 화면 목록에 없지만 캔버스에 띄울 화면. 자동 목록 뒤에 붙는다.
+// 배열 순서가 곧 흐름 순서다(자동 목록은 화면 목록 표의 순서).
+
+// ignore_for_file: unused_import
+import 'package:flutter/material.dart';
+
+import '../../core/design/semantic.dart';
+import '../../core/design/theme.dart';
+import '../../core/dev_state/dev_state.dart';
+import '../design_system/design_system_page.dart';
+import 'canvas_model.dart';
+import 'screens.generated.dart';
+
+final canvasOverrides = <String, CanvasOverride>{
+  // 비교안 — 화면 개선(2-2) 동안만 붙인다. 값만 바꾼 판은 theme, 다른 화면이면 builder:
+  // 'S-01': CanvasOverride(drafts: [
+  //   CanvasDraft(label: 'B판', theme: buildAppTheme(draftHomeB)),
+  //   CanvasDraft(label: 'C판', builder: (_) => const HomeDraftC(), states: [DevState.empty]),
+  // ]),
+  // 화면 목록에 흐름 묶음 칸이 없어 묶음을 손으로 정할 때:
+  // 'S-02': CanvasOverride(group: '처음 온 사람: 둘러보기에서 가입까지'),
+  // 한 가지 폰 크기로만 볼 때:
+  // 'S-03': CanvasOverride(widths: [CanvasViewport.phone]),
+  // 캔버스에서 뺄 때:
+  // 'S-09': CanvasOverride(skip: true),
+};
+
+final canvasExtraScreens = <CanvasScreen>[
+  CanvasScreen(
+    id: 'DS',
+    name: '디자인 시스템',
+    group: '개발: 디자인 시스템',
+    builder: (_) => const DesignSystemPage(),
+    widths: const [CanvasViewport.phone],
+  ),
+];
+
+final canvasScreens = mergeScreens(
+  generatedScreens,
+  canvasOverrides,
+  canvasExtraScreens,
+);

@@ -1,0 +1,191 @@
+// 견본 지도 부품 — 키·가입 없이 쓰는 공개 지도(OpenFreeMap 스타일)를 MapLibre(maplibre_gl)로 그린다.
+// 프로젝트에 넣는 자리: lib/shared/components/common/sample_map.dart. 넣는 차례와 이유는 틀의 README.md.
+// 실서비스 지도(키가 필요한 국내 지도 서비스 등)로 바꿀 때는 4단계 준비에서 정하고, 이 파일을 갈아끼운다.
+//
+// 테스트(flutter test) 안에서는 지도 대신 같은 크기의 빈 자리를 그린다 — 지도는 폰의 진짜 지도 화면(플랫폼 뷰)이라
+// 테스트에서는 그려지지 않는다. 그래서 골든 그림·위젯 테스트의 지도 칸은 빈 자리로 나온다.
+
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:maplibre_gl/maplibre_gl.dart';
+
+import '../../../core/design/design.dart';
+
+/// 지도 위 한 점 — 위도·경도 순서다(웹 지도 라이브러리의 [경도, 위도]와 반대).
+typedef MapPoint = ({double lat, double lng});
+
+/// 지도에 찍을 장소 하나
+class SampleMarker {
+  const SampleMarker({required this.name, required this.point});
+
+  final String name;
+  final MapPoint point;
+}
+
+/// 공개 무료 스타일. 서비스가 커지면 이 주소 한 줄만 바꿔 자체 호스팅·유료 타일로 옮긴다
+const _styleUrl = 'https://tiles.openfreemap.org/styles/liberty';
+
+class SampleMap extends StatefulWidget {
+  const SampleMap({
+    super.key,
+    required this.center,
+    required this.zoom,
+    this.markers = const [],
+    this.onMarkerTap,
+  });
+
+  final MapPoint center;
+  final double zoom;
+
+  /// 장소 목록 — 화면 밖 상수나 저장·조회 코드의 결과로 넘긴다. 목록이 바뀌면(다른 List가 오면) 점을 다시 찍는다
+  final List<SampleMarker> markers;
+
+  /// 점을 눌렀을 때 — 이름을 띄울지, 상세로 갈지는 화면이 정한다
+  final ValueChanged<SampleMarker>? onMarkerTap;
+
+  @override
+  State<SampleMap> createState() => _SampleMapState();
+}
+
+class _SampleMapState extends State<SampleMap> {
+  /// 테스트 안인가 — flutter test가 이 환경 변수를 켠다
+  static final _inTest = Platform.environment.containsKey('FLUTTER_TEST');
+
+  MapLibreMapController? _controller;
+  bool _styleLoaded = false;
+
+  @override
+  void didUpdateWidget(SampleMap old) {
+    super.didUpdateWidget(old);
+    if (!identical(old.markers, widget.markers)) _placeMarkers();
+  }
+
+  @override
+  void dispose() {
+    _controller?.onCircleTapped.remove(_onCircleTap);
+    super.dispose();
+  }
+
+  void _onCreated(MapLibreMapController controller) {
+    _controller = controller..onCircleTapped.add(_onCircleTap);
+  }
+
+  void _onCircleTap(Circle circle) {
+    final index = circle.data?['index'];
+    if (index is int && index < widget.markers.length) {
+      widget.onMarkerTap?.call(widget.markers[index]);
+    }
+  }
+
+  Future<void> _placeMarkers() async {
+    final controller = _controller;
+    if (controller == null || !_styleLoaded || !mounted) return;
+    // 점 색은 서비스 토큰에서 — 지도 라이브러리가 색을 '#RRGGBB' 글자로 받아서 바꿔 넘긴다
+    final fill = _hex(context.colors.primary);
+    final stroke = _hex(context.colors.surface);
+    // 점 크기도 간격 단계에서 — 반지름은 2단계, 테두리는 1단계의 절반
+    final radius = context.space.s2;
+    final border = context.space.s1 / 2;
+    await controller.clearCircles();
+    await controller.addCircles(
+      [
+        for (final marker in widget.markers)
+          CircleOptions(
+            geometry: LatLng(marker.point.lat, marker.point.lng),
+            circleRadius: radius,
+            circleColor: fill,
+            circleStrokeColor: stroke,
+            circleStrokeWidth: border,
+          ),
+      ],
+      [
+        for (var i = 0; i < widget.markers.length; i++) {'index': i},
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_inTest) return _placeholder(context);
+    return FutureBuilder<String>(
+      future: _koreanStyle(),
+      builder: (context, snapshot) {
+        final style = snapshot.data;
+        if (style == null) return _placeholder(context);
+        return MapLibreMap(
+          styleString: style,
+          initialCameraPosition: CameraPosition(
+            target: LatLng(widget.center.lat, widget.center.lng),
+            zoom: widget.zoom,
+          ),
+          onMapCreated: _onCreated,
+          onStyleLoadedCallback: () {
+            _styleLoaded = true;
+            _placeMarkers();
+          },
+          // 스크롤되는 화면 안에서도 끌기가 지도로 가게 한다
+          gestureRecognizers: {
+            Factory<OneSequenceGestureRecognizer>(EagerGestureRecognizer.new),
+          },
+          // 출처 표시(오른쪽 아래 i 단추 — OpenFreeMap · OpenMapTiles · OpenStreetMap)는 지도 사용 조건이다. 숨기지 않는다
+          attributionButtonPosition: AttributionButtonPosition.bottomRight,
+        );
+      },
+    );
+  }
+
+  Widget _placeholder(BuildContext context) => ColoredBox(
+    color: context.colors.surfaceContainer,
+    child: Center(
+      child: Icon(Icons.map_outlined, color: context.colors.onSurfaceVariant),
+    ),
+  );
+}
+
+String _hex(Color color) =>
+    '#${(color.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
+
+/// 지명을 한글 우선으로 바꾼 스타일 — 스타일 문서를 한 번 받아, 글자 층마다 「name:ko → name」 순서로 읽게 고친다.
+/// 받기에 실패하면 원래 주소를 그대로 쓴다(지명이 영어로 나올 뿐 지도는 뜬다). 앱이 도는 동안 한 번만 받는다.
+Future<String>? _koreanStyleFuture;
+Future<String> _koreanStyle() => _koreanStyleFuture ??= _loadKoreanStyle();
+
+Future<String> _loadKoreanStyle() async {
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+  try {
+    final request = await client.getUrl(Uri.parse(_styleUrl));
+    final response = await request.close();
+    if (response.statusCode != 200) return _styleUrl;
+    final style = jsonDecode(
+      await response.transform(utf8.decoder).join(),
+    ) as Map<String, dynamic>;
+    return jsonEncode(preferKoreanLabels(style));
+  } catch (error) {
+    debugPrint('견본 지도: 스타일을 받지 못해 원래 주소로 씁니다 ($error)');
+    return _styleUrl;
+  } finally {
+    client.close();
+  }
+}
+
+/// 스타일 문서의 글자 층 중 이름(name)을 읽는 층만 「name:ko → name」 순서로 읽게 고친다.
+/// 도로 번호처럼 이름이 아닌 것을 읽는 층은 그대로 둔다.
+@visibleForTesting
+Map<String, dynamic> preferKoreanLabels(Map<String, dynamic> style) {
+  for (final layer in (style['layers'] as List).cast<Map<String, dynamic>>()) {
+    final layout = layer['layout'];
+    if (layout is Map<String, dynamic> &&
+        jsonEncode(layout['text-field'] ?? '').contains('"name')) {
+      layout['text-field'] = [
+        'coalesce',
+        ['get', 'name:ko'],
+        ['get', 'name'],
+      ];
+    }
+  }
+  return style;
+}

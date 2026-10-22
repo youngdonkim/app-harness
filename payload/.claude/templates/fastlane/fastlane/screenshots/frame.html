@@ -1,0 +1,60 @@
+<!doctype html>
+<!--
+  스토어 스크린샷 틀 — 1080×1920(세로 9:16) 한 장.
+  주소 뒤 질의로 내용을 받습니다: ?img=<그림 경로>&title=<큰 문구>&sub=<작은 문구>
+  render.sh가 slides.tsv의 줄마다 이 파일을 열어 PNG로 찍습니다. 손으로 열어 볼 때도 같은 주소를 씁니다.
+
+  색·서체는 아래 :root 값만 바꿉니다. 값은 앱의 1층 토큰(lib/core/design/foundation.dart)에서 옮겨 옵니다 —
+  이 파일은 앱 코드가 아니라 스토어 그림이라 디자인 규칙 검사 대상이 아니지만, 앱과 같은 색·서체여야
+  스토어 페이지와 앱이 한 서비스로 보입니다. 서체 파일은 앱에 넣은 것을 상대 경로로 가리킵니다.
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<style>
+  /* 앱 서체 — 경로는 이 파일(fastlane/screenshots/) 기준. 앱에 넣은 서체 파일을 가리킵니다. */
+  @font-face {
+    font-family: "AppFont";
+    src: url("../../assets/fonts/__FONT_FILE__") format("truetype");
+    font-weight: 100 900;
+  }
+  :root {
+    --bg: #F4F1EC;          /* 배경 — 앱의 바탕색 계열 */
+    --ink: #1C1B1A;         /* 큰 문구 */
+    --ink-soft: #5B5753;    /* 작은 문구 */
+    --accent: #3D5AFE;      /* 강조 — 큰 문구 안 <b> */
+    --phone: #111111;       /* 폰 테두리 */
+    --font: "AppFont", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  }
+  html, body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; background: var(--bg); }
+  body { font-family: var(--font); color: var(--ink); display: flex; flex-direction: column; align-items: center; }
+  .copy { box-sizing: border-box; width: 100%; padding: 120px 96px 0; text-align: center; }
+  .title { margin: 0; font-size: 76px; font-weight: 800; line-height: 1.25; letter-spacing: -1.5px; word-break: keep-all; }
+  .title b { color: var(--accent); font-weight: inherit; }
+  .sub { margin: 28px 0 0; font-size: 40px; font-weight: 500; line-height: 1.4; color: var(--ink-soft); word-break: keep-all; }
+  .phone { margin-top: 88px; width: 720px; height: 1500px; box-sizing: border-box; padding: 22px;
+           border-radius: 88px; background: var(--phone); box-shadow: 0 40px 80px rgba(0, 0, 0, .18); }
+  .screen { width: 100%; height: 100%; border-radius: 68px; overflow: hidden; background: #fff; }
+  .screen img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+</style>
+</head>
+<body>
+  <div class="copy">
+    <h1 class="title" id="title"></h1>
+    <p class="sub" id="sub"></p>
+  </div>
+  <div class="phone"><div class="screen"><img id="img" alt=""></div></div>
+<script>
+  // 질의 값을 글자로만 넣습니다(HTML로 해석하지 않음). 큰 문구 안 *별표*는 강조색으로.
+  const q = new URLSearchParams(location.search);
+  const title = document.getElementById("title");
+  (q.get("title") || "").split(/(\*[^*]+\*)/).forEach((part) => {
+    if (/^\*[^*]+\*$/.test(part)) { const b = document.createElement("b"); b.textContent = part.slice(1, -1); title.appendChild(b); }
+    else title.appendChild(document.createTextNode(part));
+  });
+  document.getElementById("sub").textContent = q.get("sub") || "";
+  const img = document.getElementById("img");
+  if (q.get("img")) img.src = q.get("img");
+</script>
+</body>
+</html>

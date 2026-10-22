@@ -1,0 +1,24 @@
+import 'package:flutter/widgets.dart';
+
+/// 개발용 앱의 화면 구석에 「개발」 띠를 그립니다.
+///
+/// 사람이 지금 개발용 Firebase에 붙은 앱을 보고 있는지 화면에서 바로 알게
+/// 하려는 것입니다. `main_dev.dart`만 씁니다 — `lib/dev/`는 실서비스
+/// 진입점이 불러오지 못하게 검사(`tool/check_firebase_config.dart`)가 막습니다.
+class DevFlavorBanner extends StatelessWidget {
+  const DevFlavorBanner({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    // 앱(MaterialApp) 바깥에 씌우므로 글 방향을 직접 줍니다.
+    return Banner(
+      message: '개발',
+      location: BannerLocation.bottomStart,
+      textDirection: TextDirection.ltr,
+      layoutDirection: TextDirection.ltr,
+      child: child,
+    );
+  }
+}

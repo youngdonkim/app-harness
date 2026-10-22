@@ -1,0 +1,354 @@
+// 목업 캔버스 코멘트 서버 — mvp/canvas-comments.json 한 파일을 읽고 쓰고, 미리보기 그림을 내보내기만 한다.
+//
+// 시뮬레이터에서 도는 캔버스 앱은 저장소 폴더의 파일을 직접 못 쓴다. 그래서 맥에서 이 서버를 켜 두면
+// 캔버스가 HTTP로 코멘트를 보내고, 이 서버가 파일에 적는다. 이 맥 안(127.0.0.1)에서만 받는다.
+//
+// 켜기 (프로젝트 맨 위 폴더에서): dart run tool/canvas_server.dart          (4723부터 빈 포트를 찾아 뜬다)
+//                                dart run tool/canvas_server.dart --port 4730   (그 포트에만 뜬다)
+//                                dart run tool/canvas_server.dart --log     (받은 요청을 한 줄씩 찍는다 — 캔버스가 닿는지 볼 때)
+//
+// 포트: 한 맥에서 여러 프로젝트의 서버가 함께 뜰 수 있어 번호를 고정하지 않는다. 뜬 번호를
+//       .dart_tool/canvas_server.port(git에 안 올라감)에 적고, 캔버스 실행 명령이 그 파일을 읽어
+//       --dart-define=CANVAS_SERVER=http://127.0.0.1:<번호>로 넘긴다. Ctrl+C로 끄면 그 파일을 지운다.
+// 프로젝트 이름: 응답에 프로젝트 폴더 이름(project)을 담는다. 캔버스는 자기 프로젝트 이름과 다르면
+//       읽기·쓰기를 멈추고 「다른 프로젝트의 코멘트 서버입니다」를 띄운다 — 코멘트가 엉뚱한 프로젝트에 쌓이지 않게.
+//
+// GET   /comments                          → { project, comments: [...] }
+// POST  /comments  { 새 코멘트 }            → { project, comment }   (id·status·createdAt은 여기서 붙인다)
+// PATCH /comments  { id, status?, resolution? } → { project, comment }
+// GET   /health                            → { ok: true, project, file }
+// GET   /shots/<창 열쇠>.png                → 미리보기 그림(test/goldens/canvas/<창 열쇠>.png). 없으면 404
+//       시뮬레이터 앱은 맥의 그림 폴더를 직접 못 읽어서 이 길로 받는다. 그림은 골든 테스트가 찍는다
+//       (test/goldens/canvas_golden_test.dart).
+//
+// Claude는 파일을 직접 고쳐도 된다 — 서버가 요청마다 파일을 새로 읽는다.
+// 쓰기는 한 번에 하나씩(차례 줄) 「읽고 → 고치고 → 임시 파일에 쓴 뒤 바꿔치기」로 한다.
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
+
+/// 빈 포트를 찾기 시작하는 번호 — 여기서부터 [canvasServerPortTries]개를 차례로 본다
+const firstCanvasServerPort = 4723;
+const canvasServerPortTries = 20;
+
+/// 뜬 포트 번호를 적는 파일 — 캔버스 실행 명령이 읽는다
+const canvasServerPortFile = '.dart_tool/canvas_server.port';
+
+/// 미리보기 그림 폴더 — 골든 테스트가 창마다 한 장씩 찍어 두는 곳
+const canvasShotsFolder = 'test/goldens/canvas';
+
+/// 그림 파일 이름 — 창 열쇠(영문·숫자·-·_)에 .png. 이 꼴이 아니면 폴더 밖을 가리킬 수 있으니 받지 않는다
+final _shotName = RegExp(r'^[A-Za-z0-9_-]+\.png$');
+
+/// 폴더 경로의 마지막 이름 — 서버가 응답에 담는 프로젝트 이름
+String projectNameOf(String path) {
+  final parts = path.split(Platform.pathSeparator).where((p) => p.isNotEmpty);
+  return parts.isEmpty ? '' : parts.last;
+}
+
+Future<void> main(List<String> args) async {
+  final portIndex = args.indexOf('--port');
+  final fixedPort = portIndex >= 0 && portIndex + 1 < args.length
+      ? int.tryParse(args[portIndex + 1])
+      : null;
+  if (!File('pubspec.yaml').existsSync()) {
+    stderr.writeln('프로젝트 맨 위 폴더(pubspec.yaml이 있는 곳)에서 켜 주세요.');
+    exitCode = 64;
+    return;
+  }
+  final file = File('mvp/canvas-comments.json');
+  final project = projectNameOf(Directory.current.path);
+  final HttpServer server;
+  try {
+    server = await startCanvasServer(
+      file: file,
+      shots: Directory(canvasShotsFolder),
+      port: fixedPort ?? firstCanvasServerPort,
+      tries: fixedPort == null ? canvasServerPortTries : 1,
+      project: project,
+      log: args.contains('--log'),
+    );
+  } on SocketException {
+    stderr.writeln(
+      fixedPort != null
+          ? '$fixedPort 포트를 이미 다른 프로그램이 쓰고 있습니다. --port를 빼면 빈 포트를 찾아 뜹니다.'
+          : '$firstCanvasServerPort~${firstCanvasServerPort + canvasServerPortTries - 1} 포트가 모두 차 있습니다. '
+                '이미 켜 둔 코멘트 서버가 많은지 확인하거나 --port로 다른 번호를 주세요.',
+    );
+    exitCode = 69;
+    return;
+  }
+  final portFile = File(canvasServerPortFile);
+  await writeCanvasServerPort(portFile, server.port);
+  stdout.writeln(
+    '목업 캔버스 코멘트 서버($project): http://127.0.0.1:${server.port} → ${file.path}',
+  );
+  stdout.writeln('포트 번호를 $canvasServerPortFile에 적었습니다. 끄려면 Ctrl+C');
+  ProcessSignal.sigint.watch().first.then((_) async {
+    await removeCanvasServerPort(portFile, server.port);
+    await server.close(force: true);
+    exit(0);
+  });
+}
+
+/// 뜬 포트 번호를 파일에 적는다 — 캔버스 실행 명령이 `cat`으로 읽으니 숫자 한 줄만 쓴다.
+Future<void> writeCanvasServerPort(File file, int port) async {
+  await file.parent.create(recursive: true);
+  await file.writeAsString('$port\n');
+}
+
+/// 끌 때 포트 파일을 지운다. 그 사이 같은 프로젝트에서 다른 서버가 떠 다른 번호를 적었으면 남긴다.
+Future<void> removeCanvasServerPort(File file, int port) async {
+  if (!file.existsSync()) return;
+  if ((await file.readAsString()).trim() == '$port') await file.delete();
+}
+
+/// 서버를 켠다. [port]부터 [tries]개의 번호를 차례로 보고 처음 빈 포트에 뜬다 — 모두 차 있으면 SocketException.
+/// [port]가 0이면 운영체제가 빈 포트를 고른다(테스트용). [shots]는 미리보기 그림 폴더,
+/// [project]는 응답에 담을 프로젝트 이름.
+Future<HttpServer> startCanvasServer({
+  required File file,
+  Directory? shots,
+  int port = firstCanvasServerPort,
+  int tries = 1,
+  String project = '',
+  bool log = false,
+}) async {
+  final server = await _bindFirstFree(port, tries);
+  final store = _CommentFile(file);
+  final shotsDir = shots ?? Directory(canvasShotsFolder);
+  server.listen((request) async {
+    if (log || request.method != 'GET') {
+      stdout.writeln(
+        '${DateTime.now().toIso8601String().substring(11, 19)} ${request.method} ${request.uri}',
+      );
+    }
+    try {
+      await _handle(request, store, shotsDir, project);
+    } catch (error) {
+      await _reply(request, 500, {'project': project, 'error': '$error'});
+    }
+  });
+  return server;
+}
+
+Future<HttpServer> _bindFirstFree(int port, int tries) async {
+  SocketException? last;
+  final count = port == 0 || tries < 1 ? 1 : tries;
+  for (var i = 0; i < count; i++) {
+    if (port + i > 65535) break;
+    try {
+      return await HttpServer.bind(
+        InternetAddress.loopbackIPv4,
+        port == 0 ? 0 : port + i,
+      );
+    } on SocketException catch (error) {
+      last = error;
+    }
+  }
+  throw last ?? const SocketException('빈 포트가 없습니다');
+}
+
+Future<void> _handle(
+  HttpRequest request,
+  _CommentFile store,
+  Directory shots,
+  String project,
+) async {
+  final path = request.uri.path;
+  if (path == '/health' && request.method == 'GET') {
+    return _reply(request, 200, {
+      'ok': true,
+      'project': project,
+      'file': store.file.path,
+    });
+  }
+  if (path.startsWith('/shots/') && request.method == 'GET') {
+    return _shot(request, shots, path.substring('/shots/'.length));
+  }
+  if (path != '/comments') {
+    return _reply(request, 404, {'project': project, 'error': '없는 주소입니다'});
+  }
+
+  switch (request.method) {
+    case 'GET':
+      return _reply(request, 200, {
+        'project': project,
+        'comments': await store.load(),
+      });
+    case 'POST':
+      final body = await _readJson(request);
+      if (body == null ||
+          _text(body['comment']).trim().isEmpty ||
+          _text(body['url']).isEmpty ||
+          _text(body['screenId']).isEmpty) {
+        return _reply(request, 400, {
+          'project': project,
+          'error': 'screenId·url·comment가 필요합니다',
+        });
+      }
+      final comment = _newComment(body);
+      await store.change((comments) => comments.add(comment));
+      return _reply(request, 201, {'project': project, 'comment': comment});
+    case 'PATCH':
+      final body = await _readJson(request);
+      Map<String, Object?>? found;
+      await store.change((comments) {
+        for (final item in comments) {
+          if (item['id'] == body?['id']) found = item;
+        }
+        final target = found;
+        if (body == null || target == null) return;
+        final status = body['status'];
+        if (status == 'open' || status == 'done') {
+          target['status'] = status;
+          target['resolvedAt'] = status == 'done'
+              ? DateTime.now().toUtc().toIso8601String()
+              : null;
+        }
+        if (body['resolution'] is String) {
+          target['resolution'] = _text(body['resolution']);
+        }
+      });
+      if (found == null) {
+        return _reply(request, 404, {
+          'project': project,
+          'error': '그 id의 코멘트가 없습니다',
+        });
+      }
+      return _reply(request, 200, {'project': project, 'comment': found});
+    default:
+      return _reply(request, 405, {
+        'project': project,
+        'error': 'GET·POST·PATCH만 받습니다',
+      });
+  }
+}
+
+/// 미리보기 그림 한 장을 내보낸다. 이름이 창 열쇠 꼴이 아니거나 파일이 없으면 404 — 캔버스는 404를 받으면 이름 카드를 그린다.
+Future<void> _shot(HttpRequest request, Directory shots, String name) async {
+  final file = File('${shots.path}/$name');
+  if (!_shotName.hasMatch(name) || !file.existsSync()) {
+    return _reply(request, 404, {'error': '그 그림이 없습니다'});
+  }
+  request.response
+    ..statusCode = 200
+    ..headers.contentType = ContentType('image', 'png')
+    ..headers.set(HttpHeaders.cacheControlHeader, 'no-store');
+  await request.response.addStream(file.openRead());
+  await request.response.close();
+}
+
+Map<String, Object?> _newComment(Map<String, Object?> body) {
+  final target = body['target'] is Map
+      ? (body['target'] as Map).cast<String, Object?>()
+      : const <String, Object?>{};
+  final position = body['position'] is Map
+      ? (body['position'] as Map).cast<String, Object?>()
+      : const <String, Object?>{};
+  final random = Random();
+  final suffix = List.generate(
+    4,
+    (_) => '0123456789abcdefghijklmnopqrstuvwxyz'[random.nextInt(36)],
+  ).join();
+  return {
+    'id':
+        'c-${DateTime.now().millisecondsSinceEpoch.toRadixString(36)}-$suffix',
+    'screenId': _text(body['screenId'], 40),
+    'screenName': _text(body['screenName'], 200),
+    'draft': body['draft'] is String ? _text(body['draft'], 200) : null,
+    'url': _text(body['url'], 500),
+    'viewport': body['viewport'] == 'small' ? 'small' : 'phone',
+    'state': body['state'] is String ? _text(body['state'], 40) : null,
+    'target': {
+      'selector': _text(target['selector'], 500),
+      'text': _text(target['text'], 120),
+      'source': target['source'] is String
+          ? _text(target['source'], 300)
+          : null,
+      'component': target['component'] is String
+          ? _text(target['component'], 200)
+          : null,
+    },
+    'position': {
+      'x': _number(position['x']),
+      'y': _number(position['y']),
+      'rx': _number(position['rx']),
+      'ry': _number(position['ry']),
+    },
+    'comment': _text(body['comment']).trim(),
+    'status': 'open',
+    'resolution': '',
+    'createdAt': DateTime.now().toUtc().toIso8601String(),
+    'resolvedAt': null,
+  };
+}
+
+String _text(Object? value, [int max = 2000]) {
+  if (value is! String) return '';
+  return value.length > max ? value.substring(0, max) : value;
+}
+
+num _number(Object? value) => value is num && value.isFinite ? value : 0;
+
+Future<Map<String, Object?>?> _readJson(HttpRequest request) async {
+  try {
+    final decoded = jsonDecode(await utf8.decoder.bind(request).join());
+    return decoded is Map ? decoded.cast<String, Object?>() : null;
+  } on FormatException {
+    return null;
+  }
+}
+
+Future<void> _reply(HttpRequest request, int status, Object body) async {
+  request.response
+    ..statusCode = status
+    ..headers.contentType = ContentType.json
+    ..write(jsonEncode(body));
+  await request.response.close();
+}
+
+/// 코멘트 파일 — 쓰기를 차례 줄에 세워 한 번에 하나씩 한다.
+class _CommentFile {
+  _CommentFile(this.file);
+
+  final File file;
+  Future<void> _queue = Future.value();
+
+  /// 파일을 읽는다. 파일이 없으면 빈 목록. [strict]면 깨진 파일에서 멈춘다 — 깨진 파일을 빈 목록으로 덮어써 코멘트를 잃지 않게.
+  Future<List<Map<String, Object?>>> load({bool strict = false}) async {
+    if (!file.existsSync()) return [];
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! List) throw const FormatException('맨 바깥이 배열이 아닙니다');
+      return [
+        for (final item in decoded)
+          if (item is Map) item.cast<String, Object?>(),
+      ];
+    } on FormatException catch (error) {
+      if (strict) {
+        throw StateError(
+          '${file.path} 형식이 깨졌습니다 — 고친 뒤 다시 시도하세요 (${error.message})',
+        );
+      }
+      return [];
+    }
+  }
+
+  Future<void> change(void Function(List<Map<String, Object?>> comments) edit) {
+    final done = _queue.then((_) async {
+      final comments = await load(strict: true);
+      edit(comments);
+      await file.parent.create(recursive: true);
+      final temp = File('${file.path}.tmp');
+      await temp.writeAsString(
+        '${const JsonEncoder.withIndent('  ').convert(comments)}\n',
+      );
+      await temp.rename(file.path);
+    });
+    _queue = done.catchError((_) {});
+    return done;
+  }
+}

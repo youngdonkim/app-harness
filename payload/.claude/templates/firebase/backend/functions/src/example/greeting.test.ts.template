@@ -1,0 +1,11 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { greetingFor } from "./greeting.js";
+
+test("이름이 있으면 인사말을 만든다", () => {
+  assert.equal(greetingFor(" 민지 "), "안녕하세요, 민지님");
+});
+
+test("이름이 없으면 invalid-argument", () => {
+  assert.throws(() => greetingFor(""), { code: "invalid-argument" });
+});

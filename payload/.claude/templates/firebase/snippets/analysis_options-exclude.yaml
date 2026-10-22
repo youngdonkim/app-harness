@@ -1,0 +1,8 @@
+# analysis_options.yaml의 analyzer: exclude: 목록에 더합니다(이미 있는 build/**·android/**·ios/** 아래).
+# Firebase CLI를 저장소 최상위 node_modules에 깔면 그 안의 Dart 견본 파일이 flutter analyze에
+# 오류로 걸립니다. 서버 함수·규칙 테스트·Hosting 웹 페이지 폴더도 Dart가 아니라 뺍니다
+# (3단계에서 hosting/ 안에 Firebase CLI를 깔면 hosting/node_modules도 생깁니다).
+    - node_modules/**
+    - functions/**
+    - rules-test/**
+    - hosting/**

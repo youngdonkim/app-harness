@@ -1,0 +1,10 @@
+# android/key.properties의 모양 — 이 예시 파일만 하네스에 있고, 실제 파일은 git에 올리지 않습니다.
+# 실제 파일은 프로젝트 밖 계정 장부 폴더(~/.config/harness/keys/)에 두고,
+# 계정 장부의 ANDROID_UPLOAD_KEY_PROPERTIES가 그 경로를 가리킵니다.
+# 출시 빌드 때만 android/key.properties로 연결(심볼릭 링크)했다가 끝나면 지웁니다.
+#
+# storeFile은 절대 경로로 씁니다 — 상대 경로는 android/app 폴더 기준으로 풀려 헷갈립니다.
+storeFile=<업로드 키 파일 절대 경로 — 예: ~/.config/harness/keys/<패키지 이름>-upload.jks를 펼친 경로>
+keyAlias=upload
+storePassword=<업로드 키 저장소 비밀번호>
+keyPassword=<업로드 키 비밀번호>

@@ -1,0 +1,227 @@
+// 폰 틀 — 창 하나에 실제 앱 화면을 띄운다.
+//
+// 창마다 provider 묶음(ProviderContainer)과 라우터를 따로 만든다. 그래서
+// - 창마다 다른 상태(devStateProvider)·「로그인 전」(devGuestProvider)을 동시에 띄우고,
+// - 한 창에서 누르고 옮겨 다녀도 다른 창은 그대로다.
+// 창의 provider 묶음은 캔버스 바깥 묶음의 자식이 아니라 독립된 뿌리다 — 덮어쓰기가 어느 provider에든 그대로 듣는다.
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../core/dev_state/dev_state.dart';
+import 'canvas_comments.dart';
+import 'canvas_config.dart';
+import 'canvas_model.dart';
+
+class CanvasPhone extends StatefulWidget {
+  const CanvasPhone({
+    super.key,
+    required this.frame,
+    required this.config,
+    required this.textScale,
+    required this.commentMode,
+    required this.pins,
+    required this.onPick,
+    this.onPinTap,
+  });
+
+  final CanvasFrame frame;
+  final CanvasConfig config;
+
+  /// 글자 배율 — 폰 설정의 「글자 크기」를 흉내 낸다
+  final double textScale;
+
+  /// 코멘트 달기 모드 — 켜져 있으면 누른 자리를 화면 대신 캔버스가 받는다
+  final bool commentMode;
+
+  /// 이 창에 꽂힌 열린 코멘트와 그 번호(코멘트 목록의 번호와 같다)
+  final List<(int, CanvasComment)> pins;
+
+  /// 코멘트 달기 모드에서 누른 자리 — 창 안 위치와 단서
+  final void Function(
+    CanvasFrame frame,
+    Offset position,
+    CanvasCommentTarget target,
+    Offset ratio,
+  )
+  onPick;
+  final void Function(CanvasComment comment)? onPinTap;
+
+  @override
+  State<CanvasPhone> createState() => _CanvasPhoneState();
+}
+
+class _CanvasPhoneState extends State<CanvasPhone> {
+  late final ProviderContainer _container;
+  GoRouter? _router;
+  final _appKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    final frame = widget.frame;
+    _container = ProviderContainer(
+      overrides: [
+        ...widget.config.overrides,
+        devStateProvider.overrideWithValue(frame.state),
+        devGuestProvider.overrideWithValue(frame.guest),
+      ],
+    );
+    final location = frame.location;
+    if (frame.builder == null && location != null) {
+      _router = widget.config.createRouter(_container, location);
+    }
+  }
+
+  @override
+  void dispose() {
+    _router?.dispose();
+    _container.dispose();
+    super.dispose();
+  }
+
+  void _pick(TapUpDetails details) {
+    final box = _appKey.currentContext?.findRenderObject();
+    if (box is! RenderBox) return;
+    final found = findCommentTarget(box, details.localPosition);
+    widget.onPick(
+      widget.frame,
+      details.localPosition,
+      found.target,
+      found.ratio,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final frame = widget.frame;
+    final config = widget.config;
+    final theme = frame.draft?.theme ?? config.theme;
+    final size = frame.viewport.size;
+    final media = MediaQuery.of(context).copyWith(
+      size: size,
+      padding: frame.viewport.padding,
+      viewPadding: frame.viewport.padding,
+      viewInsets: EdgeInsets.zero,
+      textScaler: TextScaler.linear(widget.textScale),
+    );
+
+    final Widget app;
+    final router = _router;
+    if (router != null) {
+      app = MaterialApp.router(
+        debugShowCheckedModeBanner: false,
+        theme: theme,
+        routerConfig: router,
+        localizationsDelegates: config.localizationsDelegates,
+        supportedLocales: config.supportedLocales,
+        locale: config.locale,
+      );
+    } else {
+      final builder = frame.builder ?? (_) => const SizedBox.shrink();
+      app = MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: theme,
+        localizationsDelegates: config.localizationsDelegates,
+        supportedLocales: config.supportedLocales,
+        locale: config.locale,
+        home: Builder(builder: builder),
+      );
+    }
+
+    final outline = Theme.of(context).colorScheme.outline;
+    return SizedBox.fromSize(
+      size: size,
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(
+          border: Border.all(color: outline),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: RepaintBoundary(
+                  key: _appKey,
+                  child: UncontrolledProviderScope(
+                    container: _container,
+                    child: MediaQuery(data: media, child: app),
+                  ),
+                ),
+              ),
+              if (widget.commentMode)
+                Positioned.fill(
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.precise,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTapUp: _pick,
+                    ),
+                  ),
+                ),
+              for (final (number, pin) in widget.pins)
+                Positioned(
+                  left: pin.position.x - 14,
+                  top: pin.position.y - 14,
+                  child: CanvasPin(
+                    number: number,
+                    tooltip: pin.comment,
+                    onTap: widget.onPinTap == null
+                        ? null
+                        : () => widget.onPinTap!(pin),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 코멘트 핀 — 번호가 적힌 동그라미
+class CanvasPin extends StatelessWidget {
+  const CanvasPin({
+    super.key,
+    required this.number,
+    required this.tooltip,
+    this.onTap,
+  });
+
+  final int number;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: colors.error,
+            shape: BoxShape.circle,
+            border: Border.all(color: colors.onError, width: 2),
+          ),
+          child: Text(
+            '$number',
+            textScaler: TextScaler.noScaling,
+            style: TextStyle(
+              color: colors.onError,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "@@locale": "ko",
+  "appTitle": "<앱 이름>",
+  "@appTitle": {
+    "description": "앱 이름 — 작업 전환 화면 등에 쓰입니다"
+  }
+}

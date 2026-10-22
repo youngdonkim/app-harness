@@ -1,0 +1,15 @@
+import 'package:riverpod_annotation/riverpod_annotation.dart';
+
+part 'current_location.g.dart';
+
+/// 지금 열린 화면의 주소(경로 + `?질의`).
+///
+/// 앱 바깥 틀([App])이 라우터가 화면을 옮길 때마다 갱신합니다. 개발용 앱은 이
+/// 값의 `?state=`·`?as=`를 읽어 상태 흉내에 넣습니다(`lib/dev/dev_route_state.dart`).
+@Riverpod(keepAlive: true)
+class CurrentLocation extends _$CurrentLocation {
+  @override
+  Uri build() => Uri(path: '/');
+
+  void set(Uri uri) => state = uri;
+}

@@ -1,0 +1,188 @@
+// 상태 표 칸 채우기 — mvp/feature-list.md의 상태 표에서, 화면 ID마다 받은 상태 값을 해당 칸 끝 괄호 (?state=…)로 적어 넣는다.
+// 칸 번호를 손으로 세다 한 칸 밀려 적는 일을 막으려는 것이다 — 칸은 머리줄의 이름으로 찾는다.
+//   빈 상태 → empty · 로딩 → loading · 오류 → error · 권한없음 → forbidden
+//
+// 쓰는 법 (프로젝트 맨 위 폴더에서, fvm을 쓰면 앞에 fvm):
+//   dart run tool/state_fill.dart 상태값.txt     # 입력 파일을 읽어 상태 표에 적는다
+//   dart run tool/state_fill.dart --check        # 적지 않고 점검만: O인데 값이 없는 칸, 값이 있는데 O가 아닌 칸
+// 입력 파일은 한 줄에 화면 하나 — 「화면 ID 상태 값들」. 쉼표·공백·쌍점으로 나눈다. # 으로 시작하는 줄은 건너뛴다. 예:
+//   S-01 empty loading
+//   S-02: error, forbidden
+//
+// 적는 규칙 — 그 칸이 `O`로 시작할 때만 적는다. `해당없음`이나 `O*`(단추를 눌러야 생기는 상태)인 칸은 건드리지 않고 알려 준다.
+//   한 칸에 ` · `로 이은 글이 있으면 첫 덩어리 끝에 붙인다. 이미 그 값이 있으면 건너뛴다.
+// 끝나면 dart run tool/canvas_list.dart를 다시 돌린다.
+
+import 'dart:io';
+
+import 'feature_list.dart';
+
+/// 채운 결과
+class StateFillResult {
+  const StateFillResult({
+    required this.text,
+    required this.changed,
+    required this.notes,
+  });
+
+  /// 고친 문서 전체
+  final String text;
+
+  /// 적은 칸 수
+  final int changed;
+
+  /// 사람에게 알릴 것 — 적지 못한 칸, 표에 없는 화면 등
+  final List<String> notes;
+}
+
+Future<void> main(List<String> args) async {
+  if (args.isEmpty) {
+    stderr.writeln(
+      '쓰는 법: dart run tool/state_fill.dart <상태값 파일>   (또는 --check)',
+    );
+    exitCode = 64;
+    return;
+  }
+  final source = File(featureListPath);
+  if (!source.existsSync()) {
+    stderr.writeln('화면 목록 문서가 없습니다: $featureListPath');
+    exitCode = 1;
+    return;
+  }
+  final markdown = source.readAsStringSync();
+
+  if (args.first == '--check') {
+    final notes = checkStates(markdown);
+    if (notes == null) {
+      stderr.writeln(_noTable);
+      exitCode = 1;
+      return;
+    }
+    if (notes.isEmpty) stdout.writeln('점검 통과 — O 칸마다 값이 있습니다.');
+    for (final note in notes) {
+      stdout.writeln('- $note');
+    }
+    return;
+  }
+
+  final input = File(args.first);
+  if (!input.existsSync()) {
+    stderr.writeln('입력 파일을 읽지 못했습니다: ${args.first}');
+    exitCode = 1;
+    return;
+  }
+  final (wanted, unknown) = parseStateInput(input.readAsStringSync());
+  final result = fillStates(markdown, wanted);
+  if (result == null) {
+    stderr.writeln(_noTable);
+    exitCode = 1;
+    return;
+  }
+  if (result.changed > 0) source.writeAsStringSync(result.text);
+  stdout.writeln('${result.changed}칸을 적었습니다.');
+  for (final note in [...unknown, ...result.notes]) {
+    stdout.writeln('- $note');
+  }
+  if (result.changed > 0) {
+    stdout.writeln('이어서 dart run tool/canvas_list.dart를 돌리세요.');
+  }
+}
+
+const _noTable =
+    '상태 표를 찾지 못했습니다 — 머리줄에 「빈 상태」·「로딩」·「오류」·「권한없음」 중 둘 이상이 있는 표가 있어야 합니다.';
+
+/// 입력 파일 → (화면 ID → 상태 값들, 모르는 값 알림)
+(Map<String, List<String>>, List<String>) parseStateInput(String input) {
+  final known = stateColumns.values.toSet();
+  final wanted = <String, List<String>>{};
+  final notes = <String>[];
+  for (final raw in input.split('\n')) {
+    final line = raw.trim();
+    if (line.isEmpty || line.startsWith('#')) continue;
+    final words = line
+        .split(RegExp(r'[\s,:]+'))
+        .where((w) => w.isNotEmpty)
+        .toList();
+    final id = words.first;
+    final values = words.skip(1).toList();
+    final unknown = values.where((v) => !known.contains(v)).toList();
+    if (unknown.isNotEmpty) {
+      notes.add('모르는 상태 값은 건너뜁니다 ($id): ${unknown.join(', ')}');
+    }
+    wanted.putIfAbsent(id, () => []).addAll(values.where(known.contains));
+  }
+  return (wanted, notes);
+}
+
+bool _isO(String cell) => cell.startsWith('O') && !cell.startsWith('O*');
+
+/// 상태 표에 값을 적는다. 상태 표가 없으면 null.
+StateFillResult? fillStates(String markdown, Map<String, List<String>> wanted) {
+  final lines = markdown.split('\n');
+  final table = findStateTable(findTables(lines));
+  if (table == null) return null;
+  final seen = <String>{};
+  final notes = <String>[];
+  var changed = 0;
+
+  for (final index in table.rowLines) {
+    final cells = splitCells(lines[index]);
+    final id = screenIdPattern.firstMatch(cells.first)?.group(0);
+    if (id == null) continue;
+    seen.add(id);
+    final asked = wanted[id] ?? const [];
+    var rowChanged = false;
+    for (final MapEntry(key: name, value: value) in stateColumns.entries) {
+      final column = table.column(name);
+      if (column < 0 || column >= cells.length) continue;
+      final cell = cells[column];
+      if (!asked.contains(value) || cell.contains('?state=$value')) continue;
+      if (!_isO(cell)) {
+        notes.add(
+          '$id $name: 칸이 「${cell.isEmpty ? '빈 칸' : cell}」이라 적지 않았습니다 (O 칸에만 적습니다)',
+        );
+        continue;
+      }
+      final parts = cell.split(' · ');
+      parts[0] = '${parts[0]} (?state=$value)';
+      cells[column] = parts.join(' · ');
+      rowChanged = true;
+      changed++;
+    }
+    if (rowChanged) lines[index] = joinCells(cells);
+  }
+  for (final id in wanted.keys) {
+    if (!seen.contains(id)) notes.add('$id: 상태 표에 이 화면 행이 없습니다');
+  }
+  return StateFillResult(
+    text: lines.join('\n'),
+    changed: changed,
+    notes: notes,
+  );
+}
+
+/// 적지 않고 점검만 한다. 상태 표가 없으면 null.
+List<String>? checkStates(String markdown) {
+  final lines = markdown.split('\n');
+  final table = findStateTable(findTables(lines));
+  if (table == null) return null;
+  final notes = <String>[];
+  for (final index in table.rowLines) {
+    final cells = splitCells(lines[index]);
+    final id = screenIdPattern.firstMatch(cells.first)?.group(0);
+    if (id == null) continue;
+    for (final MapEntry(key: name, value: value) in stateColumns.entries) {
+      final column = table.column(name);
+      if (column < 0 || column >= cells.length) continue;
+      final cell = cells[column];
+      final hasValue = cell.contains('?state=');
+      if (_isO(cell) && !hasValue) {
+        notes.add('$id $name: O인데 (?state=$value) 값이 없습니다');
+      }
+      if (!_isO(cell) && hasValue) {
+        notes.add('$id $name: O가 아닌데 ?state= 값이 있습니다');
+      }
+    }
+  }
+  return notes;
+}

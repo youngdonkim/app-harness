@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><앱 이름></title>
+  <meta name="description" content="<앱 한 줄 소개>">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/site-config.js"></script>
+  <script src="/landing.js" defer></script>
+</head>
+<body>
+  <header><a href="/"><앱 이름></a></header>
+  <main>
+    <h1><앱 한 줄 소개></h1>
+    <p><앱이 무엇을 해 주는지 두세 문장></p>
+
+    <!-- 출시 단계(site-config.js의 releasePhase)에 맞는 블록 하나만 보입니다. -->
+    <section data-phase="pre-register" hidden>
+      <h2>곧 나옵니다</h2>
+      <p>안드로이드 앱을 준비하고 있습니다. 나오면 플레이 스토어에서 받으실 수 있습니다.</p>
+      <p><a class="button" data-link="playStoreUrl" hidden>플레이 스토어에서 사전 등록하기</a></p>
+    </section>
+
+    <section data-phase="beta" hidden>
+      <h2>지금은 시험 중입니다</h2>
+      <p>안드로이드폰에서 시험 참가 링크를 누르면 플레이 스토어에서 받으실 수 있습니다. 참가 링크는 초대받은 분께만 열립니다.</p>
+      <p><a class="button" data-link="betaJoinUrl" hidden>시험에 참가하기</a></p>
+    </section>
+
+    <section data-phase="production" hidden>
+      <h2>지금 받아 보세요</h2>
+      <p>안드로이드폰에서 플레이 스토어로 받으실 수 있습니다.</p>
+      <p><a class="button" data-link="playStoreUrl" hidden>플레이 스토어에서 받기</a></p>
+    </section>
+
+    <noscript><p>플레이 스토어에서 「<앱 이름>」을 찾아 주세요.</p></noscript>
+  </main>
+  <footer>
+    <nav>
+      <a href="/privacy">개인정보처리방침</a>
+      <a href="/terms">이용약관</a>
+      <a href="/delete-account">계정 삭제 요청</a>
+    </nav>
+    <p><개발자 이름> · 문의 <a href="mailto:<문의 메일>"><문의 메일></a></p>
+  </footer>
+</body>
+</html>

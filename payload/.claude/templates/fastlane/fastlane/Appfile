@@ -1,0 +1,10 @@
+# 플레이 올리기 설정 — 앱 하나에 한 파일.
+#
+# 서비스 계정 키 파일(JSON)은 프로젝트 밖 계정 장부 폴더의 keys/에 두고,
+# 장부의 PLAY_SERVICE_ACCOUNT_FILE이 그 경로를 가리킵니다. 실행기
+# (.claude/scripts/with-owner.sh)를 앞에 붙여 부르면 이 환경변수가 들어옵니다.
+# 키 파일 내용이나 경로를 이 파일에 직접 적지 않습니다.
+json_key_file(ENV["PLAY_SERVICE_ACCOUNT_FILE"])
+
+# 실서비스 앱의 패키지 이름(개발용 .dev 가 붙지 않은 것). 플레이에 한 번 올리면 바꿀 수 없습니다.
+package_name("__PACKAGE_NAME__")

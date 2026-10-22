@@ -1,0 +1,136 @@
+// 목업 캔버스의 목록 펴기·코멘트 모양 검사 — 화면을 열지 않는 단위 테스트.
+import 'package:<앱>/core/dev_state/dev_state.dart';
+import 'package:<앱>/dev/canvas/canvas_model.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  const list = CanvasScreen(
+    id: 'S-01',
+    name: '목록',
+    group: '참가자: 찾기에서 신청까지',
+    path: '/meetings',
+    states: [DevState.empty, DevState.error],
+  );
+
+  test('화면 하나를 상태 줄 × 폰 크기 한 쌍으로 편다', () {
+    final frames = buildFrames([list]);
+    expect(frames.map((f) => f.key), [
+      'S-01__main__phone__base',
+      'S-01__main__small__base',
+      'S-01__main__phone__empty',
+      'S-01__main__small__empty',
+      'S-01__main__phone__error',
+      'S-01__main__small__error',
+    ]);
+    expect(frames.map((f) => f.row).toSet(), {0, 1, 2});
+    expect(frames[2].url, '/meetings?state=empty');
+  });
+
+  test('비교안은 원래 화면 아래 줄에 붙고, 상태를 따로 적을 수 있다', () {
+    final screens = mergeScreens(
+      [list],
+      {
+        'S-01': const CanvasOverride(
+          drafts: [CanvasDraft(label: 'B판', states: [])],
+        ),
+      },
+      const [],
+    );
+    final drafts = buildFrames(screens).where((f) => f.draft != null).toList();
+    expect(drafts.map((f) => f.key), [
+      'S-01__draft-B__phone__base',
+      'S-01__draft-B__small__base',
+    ]);
+    expect(drafts.first.row, 3);
+    expect(drafts.first.location, '/meetings');
+  });
+
+  test('덮어쓰기는 적은 필드만 바꾸고, skip이면 뺀다', () {
+    final screens = mergeScreens(
+      [
+        list,
+        const CanvasScreen(id: 'S-02', name: '상세', group: 'g', path: '/d'),
+      ],
+      {
+        'S-01': const CanvasOverride(widths: [CanvasViewport.small]),
+        'S-02': const CanvasOverride(skip: true),
+      },
+      [
+        CanvasScreen(
+          id: 'DS',
+          name: '디자인 시스템',
+          group: '개발',
+          builder: (_) => const SizedBox(),
+        ),
+      ],
+    );
+    expect(screens.map((s) => s.id), ['S-01', 'DS']);
+    expect(screens.first.states, list.states);
+    expect(
+      buildFrames([screens.first])
+          .every((f) => f.viewport == CanvasViewport.small),
+      isTrue,
+    );
+    final widget = buildFrames([screens.last]).first;
+    expect(widget.location, isNull);
+    expect(widget.builder, isNotNull);
+  });
+
+  test('경로 끝 as=guest는 「로그인 전」으로 읽고 라우터 경로에서는 뺀다', () {
+    final frame = buildFrames([
+      const CanvasScreen(
+        id: 'S-03',
+        name: '첫 화면',
+        group: 'g',
+        path: '/?as=guest',
+      ),
+    ]).first;
+    expect(frame.guest, isTrue);
+    expect(frame.location, '/');
+  });
+
+  test('코멘트는 JSON으로 그대로 오가고, 같은 창에만 꽂힌다', () {
+    final frame = buildFrames([list])[2];
+    final json = {
+      ...newCommentBody(
+        frame: frame,
+        target: const CanvasCommentTarget(
+          selector: 'A > Text',
+          text: '없음',
+          source: 'lib/a.dart:3',
+          component: 'Text',
+        ),
+        position: const Offset(10, 20),
+        ratio: const Offset(0.5, 0.25),
+        comment: '문구를 바꿔 주세요',
+      ),
+      'id': 'c-1',
+      'status': 'open',
+      'resolution': '',
+      'createdAt': '2026-01-01T00:00:00.000Z',
+      'resolvedAt': null,
+    };
+    final comment = CanvasComment.fromJson(json);
+    expect(comment.toJson(), json);
+    expect(comment.state, 'empty');
+    expect(comment.viewport, 'phone');
+    expect(comment.belongsTo(frame), isTrue);
+    expect(comment.belongsTo(buildFrames([list])[3]), isFalse);
+  });
+
+  test('상태 흉내 — null이면 평소대로, 로딩은 끝나지 않는다', () async {
+    Future<String?> answer(DevState? s) => devStateAnswer<String>(
+      s,
+      empty: () => 'empty',
+      failure: (f) => 'fail:${f.name}',
+    );
+    expect(await answer(null), isNull);
+    expect(await answer(DevState.empty), 'empty');
+    expect(await answer(DevState.forbidden), 'fail:forbidden');
+    var finished = false;
+    answer(DevState.loading).then((_) => finished = true);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(finished, isFalse);
+  });
+}

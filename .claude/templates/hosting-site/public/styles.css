@@ -1,0 +1,115 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #5c5c5c;
+  --line: #e3e3e3;
+  --accent: #2f5bea;
+  --accent-fg: #ffffff;
+  --error: #c62828;
+  --ok: #2e7d32;
+  --surface: #f6f6f6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212;
+    --fg: #f1f1f1;
+    --muted: #a8a8a8;
+    --line: #2c2c2c;
+    --accent: #8aa6ff;
+    --accent-fg: #0b0b0b;
+    --error: #ef9a9a;
+    --ok: #a5d6a7;
+    --surface: #1d1d1d;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+main, header, footer {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+header { padding-top: 24px; }
+header a { color: var(--fg); font-weight: 700; text-decoration: none; }
+
+h1 { font-size: 28px; line-height: 1.35; margin: 32px 0 12px; }
+h2 { font-size: 20px; margin: 32px 0 8px; }
+h3 { font-size: 17px; margin: 24px 0 6px; }
+p, li { color: var(--fg); }
+.muted { color: var(--muted); }
+
+a { color: var(--accent); }
+
+.draft-note {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { border: 1px solid var(--line); padding: 8px; text-align: left; vertical-align: top; }
+.table-wrap { overflow-x: auto; }
+
+.button {
+  display: inline-block;
+  min-height: 48px;
+  padding: 12px 20px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+.button[disabled] { opacity: 0.6; cursor: default; }
+
+label { display: block; font-weight: 700; margin: 16px 0 6px; }
+input[type="email"], textarea {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+textarea { min-height: 120px; resize: vertical; }
+.hint { font-size: 14px; color: var(--muted); margin: 4px 0 0; }
+
+.status { margin-top: 16px; font-weight: 700; }
+.status.error { color: var(--error); }
+.status.ok { color: var(--ok); }
+
+/* 봇 막기용 빈칸 — 사람에게는 안 보입니다 */
+.trap { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+
+[hidden] { display: none !important; }
+
+footer {
+  margin-top: 48px;
+  padding-bottom: 32px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  color: var(--muted);
+}
+footer nav a { margin-right: 16px; }

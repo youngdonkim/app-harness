@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>예시 답변 — 귀여어스</title>
+<style>
+:root {
+  --font: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", "Malgun Gothic", "Segoe UI", Roboto, sans-serif;
+  --bg: #f7f5f1;
+  --surface: #ffffff;
+  --surface-2: #f2efe9;
+  --text: #1d1b18;
+  --muted: #69645c;
+  --line: #e6e1d8;
+  --accent: #c0622b;
+  --accent-soft: #fbeadf;
+  --on-accent: #ffffff;
+  --radius: 16px;
+  --radius-sm: 10px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px; --s8: 32px; --s12: 48px;
+  --fs-small: 14px; --fs-body: 16px; --fs-h3: 18px; --fs-h1: 28px;
+  --max: 720px;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141312;
+    --surface: #1e1c1a;
+    --surface-2: #272421;
+    --text: #f1ede6;
+    --muted: #a9a298;
+    --line: #34302b;
+    --accent: #f0a070;
+    --accent-soft: #3a2619;
+    --on-accent: #141312;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  line-height: 1.7;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+.page { max-width: var(--max); margin: 0 auto; padding: var(--s8) var(--s4) var(--s12); }
+.head { margin-bottom: var(--s8); }
+.eyebrow {
+  display: inline-block;
+  font-size: var(--fs-small); font-weight: 600;
+  color: var(--accent); background: var(--accent-soft);
+  padding: var(--s1) var(--s3); border-radius: 999px;
+}
+h1 { font-size: var(--fs-h1); line-height: 1.3; margin: var(--s3) 0 var(--s2); }
+.lead { margin: 0 0 var(--s4); }
+.note {
+  margin: 0; font-size: var(--fs-small); color: var(--muted);
+  border-left: 3px solid var(--line); padding-left: var(--s3);
+}
+.q {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--s6) var(--s4);
+  margin-bottom: var(--s4);
+}
+.q-head { display: flex; align-items: flex-start; gap: var(--s3); margin-bottom: var(--s4); }
+.num {
+  flex: none; width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent); color: var(--on-accent);
+  font-weight: 700; font-size: var(--fs-body); line-height: 1;
+}
+h2 { font-size: var(--fs-h3); line-height: 1.45; margin: var(--s1) 0 0; }
+h3 {
+  font-size: var(--fs-small); font-weight: 700; color: var(--muted);
+  margin: var(--s6) 0 var(--s2); letter-spacing: 0.02em;
+}
+.q-head + h3 { margin-top: 0; }
+p { margin: 0 0 var(--s3); }
+p:last-child { margin-bottom: 0; }
+ul, ol { margin: 0 0 var(--s3); padding-left: 1.3em; }
+li { margin-bottom: var(--s2); }
+li:last-child { margin-bottom: 0; }
+strong { font-weight: 700; }
+.pts { list-style: circle; margin: var(--s1) 0 0; padding-left: 1.2em; }
+.pts li { margin-bottom: var(--s1); }
+.sub { color: var(--muted); font-size: var(--fs-small); }
+.answer-name { font-weight: 700; font-size: var(--fs-h3); }
+.flow {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2);
+  list-style: none; padding: 0; margin: 0;
+}
+.flow li {
+  margin: 0; background: var(--surface-2); border-radius: var(--radius-sm);
+  padding: var(--s2) var(--s3); font-size: var(--fs-small);
+}
+.flow li + li::before { content: "→"; color: var(--accent); font-weight: 700; margin-right: var(--s2); }
+.attach {
+  background: var(--surface-2); border: 1px dashed var(--line);
+  border-radius: var(--radius-sm); padding: var(--s3) var(--s4);
+  color: var(--muted); font-size: var(--fs-small); margin-bottom: var(--s4);
+}
+.key {
+  margin-top: var(--s4); padding: var(--s3) var(--s4);
+  background: var(--accent-soft); border-radius: var(--radius-sm);
+}
+.key p { margin: 0; }
+table { width: 100%; border-collapse: collapse; margin: 0 0 var(--s3); font-size: var(--fs-small); }
+th, td { text-align: left; vertical-align: top; padding: var(--s3) var(--s2); border-bottom: 1px solid var(--line); }
+thead th { color: var(--muted); font-weight: 600; padding-top: 0; }
+tbody th { font-weight: 700; width: 30%; }
+tbody tr:last-child th, tbody tr:last-child td { border-bottom: 0; }
+@media (max-width: 560px) {
+  .page { padding-top: var(--s6); }
+  thead { display: none; }
+  table, tbody, tr, th, td { display: block; width: 100%; }
+  tbody tr { padding: var(--s3) 0; border-bottom: 1px solid var(--line); }
+  tbody tr:last-child { border-bottom: 0; }
+  tbody th, tbody td { border: 0; padding: 0; width: 100%; }
+  tbody th { margin-bottom: var(--s1); }
+}
+</style>
+</head>
+<body>
+<main class="page">
+<header class="head">
+<span class="eyebrow">예시 답변</span>
+<h1>귀여어스</h1>
+<p class="lead">동물 캐릭터들이 옆자리에서 함께 공부해 주는 캠스터디 서비스</p>
+<p class="note">분야가 다르니 예시로만 참고하세요. 1단계 인터뷰 첫 턴의 질문 다섯에 이렇게 답할 수 있다는 본보기입니다.</p>
+</header>
+<section class="q">
+<div class="q-head"><span class="num">1</span><h2>서비스는 무엇인가요?</h2></div>
+<p><span class="answer-name">귀여어스</span> — 화상회의를 켜면 각자 할 일을 하는 기니피그·햄스터 캐릭터들이 옆자리에서 함께 공부해 주는, 동물 친구들과의 캠스터디 서비스</p>
+<h3>이렇게 돌아간다</h3>
+<ul><li>줌 비슷한 회의 화면에 동물 친구들이 참가자로 들어온다</li><li>필기하는 기니피그, 이불 속에서 노트북을 하는 햄스터 등 25마리가 각자 공부한다</li><li>처음에는 질문 6개로 공부 유형을 알아본다</li><li>그 결과로 잘 맞는 기니피그 스터디메이트 3마리를 짝지어 준다</li><li>동물 친구들의 자작곡 9곡과 빗소리·모닥불 같은 백색소음을 틀 수 있다</li></ul>
+</section>
+
+<section class="q">
+<div class="q-head"><span class="num">2</span><h2>누가, 왜 이용하나요?</h2></div>
+<h3>누가 쓰나</h3>
+<ul><li><strong>혼자 공부하는 수험생·대학생</strong><ul class="pts"><li>혼자 공부하면 자꾸 딴짓하게 된다</li></ul></li><li><strong>재택근무자·프리랜서</strong><ul class="pts"><li>'각할모(각자 할 일 하는 모임)'·어드민 나이트처럼 남과 함께 있을 때 능률이 오른다는 걸 아는 사람</li><li>함께할 사람이 없는 이들을 위한 서비스로 만들고 싶다</li></ul></li><li><strong>기존 캠스터디가 부담스러운 사람</strong><ul class="pts"><li>모르는 사람에게 얼굴을 보이기는 싫다</li><li>그런데 혼자서는 집중이 안 된다</li></ul></li><li><strong>귀여운 캐릭터를 좋아하는 사람</strong><ul class="pts"><li>동물 캐릭터·꾸미기·선물이 게임 같은 재미를 준다</li></ul></li></ul>
+<h3>이럴 때 쓴다</h3>
+<p class="sub">공부나 일을 시작할 때 '회의'를 열어 켜 두는 서비스다.</p>
+<table>
+<thead><tr><th scope="col">이럴 때</th><th scope="col">이렇게 쓴다</th></tr></thead>
+<tbody>
+<tr><th scope="row">혼자 공부할 때</th><td>회의를 열고 동물 친구를 고르면, 동물 친구들이 옆 칸에서 각자 공부한다.</td></tr>
+<tr><th scope="row">집중 시간 관리</th><td>타이머로 시간을 재고 달력에 쌓는다. 잠금화면·홈 화면 위젯도 있다.</td></tr>
+<tr><th scope="row">할 일 체크</th><td>오늘 할 일을 적고 회의 중에 체크한다. 마감 알림을 걸면 동물 친구가 챙겨 준다.</td></tr>
+<tr><th scope="row">친구와 같이</th><td>링크로 친구를 불러 얼굴·목소리로 함께한다.</td></tr>
+<tr><th scope="row">서로 자극받기</th><td>라운지에서 지금 공부 중인 사람들을 보고, 주간 랭킹으로 응원한다.</td></tr>
+</tbody>
+</table>
+<h3>해결하고 싶은 문제</h3>
+<ol><li><strong>혼자서는 딴짓</strong><ul class="pts"><li>옆에 누가 있으면 집중이 잘 된다('바디 더블링')</li><li>그 누군가를 동물 캐릭터가 대신한다</li></ul></li><li><strong>함께할 사람이 없음</strong><ul class="pts"><li>언제든 회의를 열면 바로 동료가 생긴다</li></ul></li><li><strong>캠스터디의 부담</strong><ul class="pts"><li>혼자서도 쓴다</li><li>친구를 부를 때만 카메라를 켠다</li></ul></li></ol>
+<h3>주는 즐거움</h3>
+<ul><li><strong>진짜 같은 연출</strong><ul class="pts"><li>동물마다 다른 일을 하고, 가끔 자리도 비운다</li><li>반복 동작에 연출 몇 가지만 더해 함께 있는 착각을 준다</li></ul></li><li><strong>말 거는 동물 친구</strong><ul class="pts"><li>말을 걸면 대답한다</li><li>지친다·할 일이 많다는 채팅에 묘하게 공감이 된다</li></ul></li><li><strong>친해지는 재미</strong><ul class="pts"><li>포인트를 모아 친해지면 사진·꾸미기 아이템을 선물받는다</li><li>털색·모자·안경으로 회원증 캐릭터를 꾸민다</li></ul></li><li><strong>느슨한 경쟁</strong><ul class="pts"><li>라운지와 주간 랭킹</li></ul></li></ul>
+<div class="key"><p><strong>한마디로</strong> — 사람 없이도 '누군가와 함께 일하고 있다'는 감각을 만든다.</p></div>
+</section>
+
+<section class="q">
+<div class="q-head"><span class="num">3</span><h2>지금은 이 일을 어떻게 하고 있나요?</h2></div>
+<h3>지금 하는 방법</h3>
+<ul><li>유튜브의 '스터디 윗미(study with me)' 영상을 틀어 둔다</li><li>캠스터디 방에 들어간다</li><li>타이머와 할 일 목록은 다른 앱을 따로 쓴다</li></ul>
+<h3>아쉬운 점</h3>
+<ul><li>모르는 사람에게 얼굴을 보이는 게 부담스럽다</li><li>영상은 내 공부와 상관없이 흘러가서 금방 딴짓을 하게 된다</li></ul>
+</section>
+
+<section class="q">
+<div class="q-head"><span class="num">4</span><h2>사용자는 어떤 순서로 쓰게 되나요?</h2></div>
+<ol class="flow"><li>공부를 시작할 때 회의를 열고</li><li>함께할 동물 친구를 고르고</li><li>오늘 할 일을 적고 타이머를 켜고</li><li>동물 친구들 옆에서 공부하며 할 일을 체크하고</li><li>끝나면 달력에 쌓인 집중 시간을 본다</li></ol>
+</section>
+
+<section class="q">
+<div class="q-head"><span class="num">5</span><h2>어떤 모습이었으면 좋겠나요?</h2></div>
+<div class="attach">(캡처 이미지 1장 첨부 — 줌(Zoom) 회의에서 참가자들이 바둑판처럼 나란히 보이는 화면)</div>
+<ul><li><strong>마음에 드는 것</strong>: 화면 배치 — 참가자 칸이 바둑판처럼 고르게 나뉘고, 아래에 버튼 줄이 있는 것</li><li><strong>바꾸고 싶은 것</strong>: 색은 더 따뜻하고 포근하게. 칸 모서리는 더 둥글게</li></ul>
+</section>
+
+</main>
+</body>
+</html>

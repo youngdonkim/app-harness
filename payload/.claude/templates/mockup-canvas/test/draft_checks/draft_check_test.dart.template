@@ -1,0 +1,239 @@
+// 2-3 비교안 자기 점검 테스트 틀 — 판 하나가 자기 화면을 위젯 테스트로 그림 찍고 눌러 보며 고치는 데 쓴다.
+// 프로젝트에는 test/draft_checks/<판>_check_test.dart 로 복사한다(<판> = bold · innov · leap 중 하나, 판마다 파일 하나).
+// 이것은 만드는 손의 점검이지 판정이 아니다. 그림이 쓸 만한지는 사람이 본다 — 보고에 「확인 완료」를 쓰지 않고 해 본 것과 고친 것만 쓴다.
+//
+// 지켜야 할 것
+// - 판 하나의 파일만 import 한다: 그 판의 토큰 파일(lib/core/design/drafts/<판>.dart)과 그 판 화면(lib/dev/drafts/<판>/…).
+//   lib/core/design/drafts.dart(모음 파일)·lib/dev/canvas/screens.dart·lib/main_canvas.dart 는 import 하지 않는다 —
+//   다른 판의 오류가 이 테스트를 멈추지 못하게 하려는 것이다. 목업 캔버스 틀(CanvasPhone)도 거치지 않고 Theme 으로 직접 감싼다.
+// - pumpAndSettle 을 쓰지 않는다. 위젯 테스트 안에서는 가짜 시계라, 끝없이 도는 움직임(repeat)이 있으면 시간 초과 오류로 실패한다.
+//   pump(Duration)을 정해진 횟수로 돌린다.
+// - 실행은 파일 하나만, 시간 상한을 걸어서:  fvm flutter test --timeout 2m test/draft_checks/<판>_check_test.dart
+//   (fvm 을 안 쓰면 앞의 fvm 을 뗀다). 전체 flutter test 는 다른 판의 오류로 실패하니 돌리지 않는다. 한 명령이 5분을 넘기면 끊는다.
+//   flutter build·run 은 돌리지 않고, 다른 테스트와 같은 시각에 돌리지 않는다. 같은 프로젝트에서 flutter 명령을 겹쳐 돌리면
+//   가끔 build/ 폴더가 부딪혀 실패한다 — 실패하면 한 번만 다시 돌린다.
+// - 묶음마다 그림 한 장 + 단언(expect) 하나 이상. 그림만 찍히고 끌기가 안 먹어도 테스트가 통과하는 것을 막으려는 것이다.
+// - 지도·카메라 같은 플랫폼 뷰는 위젯 테스트에서 빈 자리로 나오고, 3D 패키지(flutter_scene)는 그리기에 실패한다(오류) —
+//   그 부분은 가짜 위젯으로 바꿔 끼운 자리로 찍고, 자동 점검에서 빠졌다고 보고에 적는다.
+//
+// 그림은 .draft-checks/<판>/<판>-<회차>-<묶음>.png 에 쓴다(프로젝트 맨 위 폴더 기준, git 에 올리지 않는다 — .gitignore 에 이미 있다).
+// RepaintBoundary.toImage 로 직접 쓴다. 비교 기준 그림(골든)이 아니라서 test/goldens/ 에 두지 않는다.
+
+@Tags(['golden'])
+library;
+
+import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:<앱>/core/design/drafts/<판>.dart'; // 이 판의 토큰과 테마 함수 (예: draftBold · draftBoldTheme())
+// (판 테마 함수가 buildAppTheme을 부르고 판 접두 확장을 펼쳐 얹는다 — 여기서 buildAppTheme을 직접 부르지 않는다)
+import 'package:<앱>/dev/drafts/<판>/<화면 파일>.dart'; // 이 판의 화면 위젯 (파일 이름은 소문자_밑줄, 위젯 이름은 아래 <판 화면>)
+import 'package:<앱>/dev/fakes/canvas_overrides.dart'; // 가짜 저장소 (실제 저장소에 붙지 않게)
+import 'package:<앱>/l10n/app_localizations.dart';
+
+const _edition = '<판>';
+
+/// 회차 — 「그리고 → 고친」 한 번이 한 회차다. 고친 뒤 다시 찍기 전에 1씩 올린다(그림 이름에 들어가 회차별 그림이 남는다)
+const _round = 1;
+const _phone = Size(390, 844);
+const _smallPhone = Size(360, 780);
+
+/// 찍기·눌러 보기 전에 화면이 그릴 시간. pumpAndSettle 대신 정해진 횟수만 흘린다
+const _settleSteps = 5;
+const _settleStep = Duration(milliseconds: 100);
+
+final _boundary = GlobalKey();
+
+/// 한글 글꼴 파일 — 맥에 있는 첫 번째 것. 프로젝트에 한글 글꼴 파일이 있으면 그 경로를 맨 앞에 더한다(기기와 상관없이 같은 그림이 나온다).
+ByteData? _koreanFontBytes() {
+  const candidates = [
+    '/System/Library/Fonts/AppleSDGothicNeo.ttc',
+    '/System/Library/Fonts/Supplemental/AppleGothic.ttf',
+  ];
+  for (final path in candidates) {
+    final file = File(path);
+    if (file.existsSync()) return ByteData.sublistView(file.readAsBytesSync());
+  }
+  return null;
+}
+
+Future<void> _load(String family, List<ByteData> fonts) async {
+  final loader = FontLoader(family);
+  for (final f in fonts) {
+    loader.addFont(Future.value(f));
+  }
+  await loader.load();
+}
+
+/// 글자가 네모로 찍히지 않게 서체를 올린다. 위젯 테스트는 pubspec.yaml 의 서체를 저절로 올리지 않고, 기본 글꼴(Ahem)은 글자를 네모로 찍는다.
+/// 앱 글자 묶음(context.text)의 TextStyle 은 fontFamily 를 직접 가져서, 테마의 fontFamilyFallback 만으로는 영문·숫자가 네모로 남는다
+/// (2026-10-22 실험: 'KR' 만 올렸더니 context.text 로 그린 한글은 나왔지만 영문·숫자와 등록된 제목 서체가 네모였다. 아래 ①②로 모두 제대로 찍혔다).
+/// ① 한글 글꼴을 'KR' 로 올린다(Material 기본 글자의 fallback).
+/// ② pubspec.yaml 의 fonts: 에 등록된 서체(본문 서체·대담판이 넣은 판 제목 서체 후보)를 그 family 이름 그대로 올린다.
+/// ③ 테마가 쓰는 서체 이름 중 ②에 없는 것(파일을 아직 넣지 않은 서체)은 한글 글꼴을 그 이름으로 올린다.
+Future<void> _loadFonts(ThemeData theme) async {
+  final korean = _koreanFontBytes();
+  if (korean != null) await _load('KR', [korean]);
+
+  final files = <String, List<String>>{};
+  String? family;
+  for (final line in File('pubspec.yaml').readAsLinesSync()) {
+    final f = RegExp(r'^\s*-\s*family:\s*(\S+)').firstMatch(line);
+    if (f != null) family = f.group(1);
+    final a = RegExp(r'^\s*-?\s*asset:\s*(\S+)').firstMatch(line);
+    if (a != null && family != null) (files[family] ??= []).add(a.group(1)!);
+  }
+  for (final entry in files.entries) {
+    await _load(entry.key, [
+      for (final path in entry.value)
+        if (File(path).existsSync()) ByteData.sublistView(File(path).readAsBytesSync()),
+    ]);
+  }
+
+  final t = theme.textTheme;
+  final used = {
+    for (final s in [t.displayLarge, t.displayMedium, t.displaySmall, t.headlineLarge, t.headlineMedium,
+        t.headlineSmall, t.titleLarge, t.titleMedium, t.titleSmall, t.bodyLarge, t.bodyMedium, t.bodySmall,
+        t.labelLarge, t.labelMedium, t.labelSmall])
+      ?s?.fontFamily,
+  };
+  for (final name in used.difference(files.keys.toSet())) {
+    if (korean != null) await _load(name, [korean]);
+  }
+}
+
+/// 판 토큰을 직접 Theme 으로 감싼 화면. 캔버스 틀을 거치지 않는다.
+/// - disableAnimations·textScale: MediaQuery 로 바깥에서 준다 (묶음 ③·④)
+/// - 글꼴: 'KR' 을 fallback 으로 건다(서체 파일은 _loadFonts 가 올린다)
+Widget _host(
+  Widget screen, {
+  bool disableAnimations = false,
+  double textScale = 1,
+}) {
+  final base = draft<판>Theme(); // 이 판의 테마 — 기본 확장 위에 판 접두 확장까지 얹혀 있다
+  final theme = base.copyWith(
+    textTheme: base.textTheme.apply(fontFamilyFallback: const ['KR']),
+    // 확장을 더할 일이 있으면 이렇게 — copyWith(extensions:)는 통째로 바꾸니 기존 것을 펼쳐서 얹는다:
+    // extensions: [...base.extensions.values, 판전용확장(…)],
+  );
+  return ProviderScope(
+    overrides: canvasFakeOverrides,
+    child: MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: theme,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: const Locale('ko'),
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          disableAnimations: disableAnimations,
+          textScaler: TextScaler.linear(textScale),
+        ),
+        child: child!,
+      ),
+      home: RepaintBoundary(key: _boundary, child: screen),
+    ),
+  );
+}
+
+Future<void> _pumpScreen(
+  WidgetTester t,
+  Size size, {
+  bool disableAnimations = false,
+  double textScale = 1,
+}) async {
+  t.view.physicalSize = size;
+  t.view.devicePixelRatio = 1;
+  addTearDown(t.view.reset);
+  await t.pumpWidget(
+    _host(
+      const <판 화면>(), // 이 판의 화면 위젯 (const 가 아니면 const 를 뗀다)
+      disableAnimations: disableAnimations,
+      textScale: textScale,
+    ),
+  );
+  await _settle(t);
+}
+
+Future<void> _settle(WidgetTester t) async {
+  for (var i = 0; i < _settleSteps; i++) {
+    await t.pump(_settleStep);
+  }
+}
+
+// 그림 한 장을 .draft-checks/<판>/<판>-<회차>-<묶음>.png 에 쓴다. 상대 경로는 flutter test 를 돌린 폴더(프로젝트 맨 위) 기준이다
+Future<void> _shoot(WidgetTester t, String group) async {
+  await t.runAsync(() async {
+    final boundary =
+        _boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+    final image = await boundary.toImage();
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    File('.draft-checks/$_edition/$_edition-$_round-$group.png')
+      ..createSync(recursive: true)
+      ..writeAsBytesSync(data!.buffer.asUint8List());
+  });
+}
+
+void main() {
+  setUpAll(() => _loadFonts(draft<판>Theme()));
+
+  // ① 보통 폰 — 그림 + 눌러 본 뒤 바뀐 상태 확인
+  testWidgets('① 보통 폰 390×844', (t) async {
+    await _pumpScreen(t, _phone);
+    await _shoot(t, '1-phone');
+    expect(find.text('<화면에 보여야 하는 글자>'), findsOneWidget); // 실제 문구로 바꾼다
+    // 끌기·길게 누르기·밀기는 터치로 들어간다. 작은 걸음으로 여러 번 움직이는 편이 확실하다(한 번에 크게 끌면 콜백이 0이 되기도 한다):
+    //   final g = await t.startGesture(t.getCenter(find.byKey(const Key('<조작 대상>'))));
+    //   for (var i = 0; i < 15; i++) { await g.moveBy(const Offset(4, 0)); await t.pump(const Duration(milliseconds: 16)); }
+    //   await g.up(); await _settle(t);
+    //   expect(find.text('<조작 뒤에 보여야 하는 글자>'), findsOneWidget);  // 바뀐 상태를 읽는다
+    //   두 손가락 확대는 pointer: 1·2 로 startGesture 두 개를 반대로 moveBy 한다.
+    expect(t.takeException(), isNull);
+  });
+
+  // ② 작은 폰
+  testWidgets('② 작은 폰 360×780', (t) async {
+    await _pumpScreen(t, _smallPhone);
+    await _shoot(t, '2-small-phone');
+    expect(t.takeException(), isNull); // 넘침(overflow) 오류가 없다
+  });
+
+  // ③ 동작 줄이기 — pump 한 번 뒤에 끝 상태가 바로 보인다
+  testWidgets('③ 동작 줄이기', (t) async {
+    await t.pumpWidget(const SizedBox()); // 앞 테스트의 화면 정리
+    await _pumpScreen(t, _phone, disableAnimations: true);
+    await _shoot(t, '3-reduced-motion');
+    expect(
+      MediaQuery.of(t.element(find.byType(Scaffold).first)).disableAnimations,
+      isTrue,
+    );
+    expect(find.text('<움직임이 끝난 뒤의 글자>'), findsOneWidget); // 움직임을 기다리지 않아도 끝 상태다
+  });
+
+  // ④ 글자 배율 2.0 + 접근성 지침(누르는 크기·이름표·글자 대비)
+  testWidgets('④ 글자 2배와 접근성 지침', (t) async {
+    // 의미 트리(semantics)는 testWidgets 가 기본으로 켜 준다(semanticsEnabled: true). ensureSemantics()는 부르지 않는다 —
+    // 따로 부르면 dispose 시점이 어긋나 오류가 난다(2026-10-22 실험).
+    await _pumpScreen(t, _phone, textScale: 2.0);
+    await _shoot(t, '4-text-2x');
+    expect(t.takeException(), isNull); // 넘침 오류 0
+    await expectLater(t, meetsGuideline(androidTapTargetGuideline));
+    await expectLater(t, meetsGuideline(iOSTapTargetGuideline));
+    await expectLater(t, meetsGuideline(labeledTapTargetGuideline));
+    await expectLater(t, meetsGuideline(textContrastGuideline));
+  });
+
+  // ⑤ 수단이 안 될 때(가짜 저장소 비움 · 권한 거부 흉내) — 목록 화면이나 안내가 보인다. 대담판이면 이 묶음을 지운다
+  testWidgets('⑤ 수단이 안 될 때', (t) async {
+    // canvas_overrides.dart 의 가짜 저장소를 이 테스트에서만 비움·거부로 바꿔 _host 의 ProviderScope 에 넣는다.
+    // 지도·카메라는 테스트에서 빈 자리, 3D 패키지는 그리기에 실패하니 그 자리를 가짜 위젯으로 바꿔 끼운 채 찍는다.
+    await _pumpScreen(t, _phone);
+    await _shoot(t, '5-fallback');
+    expect(find.text('<대체 화면에 보여야 하는 글자>'), findsOneWidget);
+  });
+}

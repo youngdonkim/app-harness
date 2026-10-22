@@ -1,0 +1,337 @@
+// 코멘트 핀 — 저장소(코멘트 서버에 묻기)와 누른 자리의 단서 찾기.
+//
+// 시뮬레이터 앱은 저장소 폴더의 파일을 직접 쓰지 못한다. 그래서 맥에서 도는 작은 서버
+// (tool/canvas_server.dart — mvp/canvas-comments.json 읽기·쓰기만 한다)에 HTTP로 보낸다.
+// 시뮬레이터는 맥의 127.0.0.1에 바로 닿는다.
+//
+// 한 맥에서 여러 프로젝트의 서버가 함께 뜰 수 있다. 서버는 빈 포트에 뜨고 번호를 .dart_tool/canvas_server.port에
+// 적으며, 캔버스 실행 명령이 그 번호를 CANVAS_SERVER로 넘긴다. 서버는 응답마다 프로젝트 폴더 이름을 담고,
+// 이 파일은 그 이름이 캔버스의 프로젝트와 다르면 읽기·쓰기를 멈춘다(CanvasWrongServerException).
+
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/widgets.dart';
+
+import 'canvas_model.dart';
+
+/// 코멘트 서버 주소 — 실행 명령이 `--dart-define=CANVAS_SERVER=http://127.0.0.1:<.dart_tool/canvas_server.port의 번호>`로 넘긴다.
+/// 넘기지 않으면 서버가 처음 찾아보는 번호(4723)로 붙는다.
+const canvasServerAddress = String.fromEnvironment(
+  'CANVAS_SERVER',
+  defaultValue: 'http://127.0.0.1:4723',
+);
+
+/// 이 캔버스의 프로젝트 이름(프로젝트 폴더 이름) — 코멘트 서버가 응답에 담는 이름과 견준다.
+/// `--dart-define=CANVAS_PROJECT=<이름>`으로 넘기면 그 값, 아니면 캔버스 파일이 기록된 경로에서 알아낸다
+/// (디버그 실행에서만 — [rememberProjectRoot]). 둘 다 없으면 null이고, 그때는 견주지 않는다.
+String? canvasProjectName() {
+  const fromDefine = String.fromEnvironment('CANVAS_PROJECT');
+  if (fromDefine.isNotEmpty) return fromDefine;
+  final lib = _projectLib;
+  if (lib == null) return null;
+  final parts = lib.split('/').where((part) => part.isNotEmpty).toList();
+  return parts.length >= 2 ? parts[parts.length - 2] : null;
+}
+
+/// 붙은 코멘트 서버가 다른 프로젝트의 것일 때 — 코멘트가 엉뚱한 프로젝트 파일에 쌓이지 않게 멈춘다
+class CanvasWrongServerException implements Exception {
+  const CanvasWrongServerException({
+    required this.server,
+    required this.canvas,
+  });
+
+  /// 서버가 알려 온 프로젝트 이름
+  final String server;
+
+  /// 이 캔버스의 프로젝트 이름
+  final String canvas;
+
+  @override
+  String toString() =>
+      '다른 프로젝트의 코멘트 서버입니다 (서버: $server, 이 캔버스: $canvas). '
+      '이 프로젝트 폴더에서 `dart run tool/canvas_server.dart`를 켠 뒤 캔버스를 다시 띄워 주세요.';
+}
+
+abstract class CanvasCommentStore {
+  Future<List<CanvasComment>> list();
+  Future<CanvasComment> add(Map<String, Object?> body);
+  Future<CanvasComment> update(String id, {String? status, String? resolution});
+}
+
+/// 코멘트 서버에 묻는 저장소
+class HttpCanvasCommentStore implements CanvasCommentStore {
+  HttpCanvasCommentStore([String address = canvasServerAddress])
+    : _base = Uri.parse(address);
+
+  final Uri _base;
+  final HttpClient _client = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 2);
+
+  Future<Map<String, Object?>> _send(
+    String method,
+    String path, [
+    Object? body,
+  ]) async {
+    final request = await _client.openUrl(method, _base.resolve(path));
+    if (body != null) {
+      request.headers.contentType = ContentType.json;
+      request.add(utf8.encode(jsonEncode(body)));
+    }
+    final response = await request.close().timeout(const Duration(seconds: 5));
+    final text = await response.transform(utf8.decoder).join();
+    final json = (jsonDecode(text) as Map).cast<String, Object?>();
+    _checkProject(json);
+    if (response.statusCode >= 400) {
+      throw HttpException('${json['error'] ?? response.statusCode}');
+    }
+    return json;
+  }
+
+  /// 서버가 담아 보낸 프로젝트 이름이 이 캔버스와 다르면 멈춘다. 이름이 없는 응답(옛 서버)은 견주지 않는다.
+  void _checkProject(Map<String, Object?> json) {
+    final server = json['project'];
+    final canvas = canvasProjectName();
+    if (server is String &&
+        server.isNotEmpty &&
+        canvas != null &&
+        server != canvas) {
+      throw CanvasWrongServerException(server: server, canvas: canvas);
+    }
+  }
+
+  /// 쓰기 전에 서버가 이 프로젝트의 것인지 먼저 묻는다 — 쓴 뒤에 알면 이미 다른 프로젝트 파일에 들어간 뒤다
+  Future<void> _ensureOwnServer() => _send('GET', '/health');
+
+  @override
+  Future<List<CanvasComment>> list() async {
+    final json = await _send('GET', '/comments');
+    return (json['comments'] as List? ?? const [])
+        .map(
+          (item) =>
+              CanvasComment.fromJson((item as Map).cast<String, Object?>()),
+        )
+        .toList();
+  }
+
+  @override
+  Future<CanvasComment> add(Map<String, Object?> body) async {
+    await _ensureOwnServer();
+    final json = await _send('POST', '/comments', body);
+    return CanvasComment.fromJson(
+      (json['comment'] as Map).cast<String, Object?>(),
+    );
+  }
+
+  @override
+  Future<CanvasComment> update(
+    String id, {
+    String? status,
+    String? resolution,
+  }) async {
+    await _ensureOwnServer();
+    final json = await _send('PATCH', '/comments', {
+      'id': id,
+      'status': ?status,
+      'resolution': ?resolution,
+    });
+    return CanvasComment.fromJson(
+      (json['comment'] as Map).cast<String, Object?>(),
+    );
+  }
+}
+
+/// 메모리에만 두는 저장소 — 위젯 테스트용
+class MemoryCanvasCommentStore implements CanvasCommentStore {
+  final List<CanvasComment> items = [];
+  var _next = 0;
+
+  @override
+  Future<List<CanvasComment>> list() async => List.of(items);
+
+  @override
+  Future<CanvasComment> add(Map<String, Object?> body) async {
+    final comment = CanvasComment.fromJson({
+      ...body,
+      'id': 'c-test-${_next++}',
+      'status': 'open',
+      'resolution': '',
+      'createdAt': DateTime.now().toUtc().toIso8601String(),
+      'resolvedAt': null,
+    });
+    items.add(comment);
+    return comment;
+  }
+
+  @override
+  Future<CanvasComment> update(
+    String id, {
+    String? status,
+    String? resolution,
+  }) async {
+    final index = items.indexWhere((item) => item.id == id);
+    final json = items[index].toJson();
+    if (status != null) {
+      json['status'] = status;
+      json['resolvedAt'] = status == 'done'
+          ? DateTime.now().toUtc().toIso8601String()
+          : null;
+    }
+    if (resolution != null) json['resolution'] = resolution;
+    return items[index] = CanvasComment.fromJson(json);
+  }
+}
+
+/// 누른 자리의 단서 — [root]는 창 안 앱을 감싼 상자, [position]은 그 상자 안 위치.
+///
+/// 「파일:줄」은 디버그 실행(`flutter run`)에서 Flutter가 위젯마다 기록해 두는 「만든 자리」에서 읽는다.
+/// 프로젝트 코드(lib/)가 만든 위젯만 고르고, 캔버스 자신(lib/dev/canvas/)과 패키지 코드는 뺀다.
+({CanvasCommentTarget target, Offset ratio}) findCommentTarget(
+  RenderBox root,
+  Offset position,
+) {
+  final result = BoxHitTestResult();
+  root.hitTest(result, position: position);
+
+  var text = '';
+  RenderBox? hitBox;
+  Element? hitElement;
+  for (final entry in result.path) {
+    final target = entry.target;
+    if (target is! RenderObject) continue;
+    if (text.isEmpty && target is RenderParagraph) {
+      text = target.text.toPlainText().trim();
+    }
+    if (hitBox == null && target is RenderBox) hitBox = target;
+    if (hitElement == null) {
+      final creator = target.debugCreator;
+      if (creator is DebugCreator) hitElement = creator.element;
+    }
+  }
+
+  final chain = <({String name, String? source, Element element})>[];
+  if (hitElement != null) {
+    void visit(Element element) {
+      final source = _projectSource(element.widget);
+      if (source != null) {
+        chain.add((
+          name: _widgetName(element.widget),
+          source: source,
+          element: element,
+        ));
+      }
+    }
+
+    visit(hitElement);
+    hitElement.visitAncestorElements((element) {
+      visit(element);
+      return chain.length < 8 && element.widget is! WidgetsApp;
+    });
+  }
+
+  // 누른 자리에 가장 가까운 프로젝트 위젯 — 그 상자 안에서의 비율도 잰다
+  final nearest = chain.isEmpty ? null : chain.first;
+  var ratio = Offset.zero;
+  final box = nearest?.element.findRenderObject() ?? hitBox;
+  if (box is RenderBox &&
+      box.hasSize &&
+      box.size.width > 0 &&
+      box.size.height > 0) {
+    final local = box.globalToLocal(root.localToGlobal(position));
+    ratio = Offset(
+      (local.dx / box.size.width).clamp(0, 1),
+      (local.dy / box.size.height).clamp(0, 1),
+    );
+  }
+
+  if (text.isEmpty && nearest != null) {
+    // 글자를 직접 누르지 않았으면 그 위젯 안의 첫 글자를 단서로 쓴다
+    text = _firstText(nearest.element);
+  }
+
+  return (
+    target: CanvasCommentTarget(
+      selector: chain.reversed.map((item) => item.name).join(' > '),
+      text: text.length > 120 ? text.substring(0, 120) : text,
+      source: nearest?.source,
+      component: nearest?.name,
+    ),
+    ratio: ratio,
+  );
+}
+
+String _widgetName(Widget widget) {
+  final name = widget.runtimeType.toString();
+  final generic = name.indexOf('<');
+  return generic < 0 ? name : name.substring(0, generic);
+}
+
+String _firstText(Element element) {
+  var found = '';
+  void visit(Element child) {
+    if (found.isNotEmpty) return;
+    final render = child.renderObject;
+    if (render is RenderParagraph) {
+      found = render.text.toPlainText().trim();
+      return;
+    }
+    child.visitChildren(visit);
+  }
+
+  element.visitChildren(visit);
+  return found;
+}
+
+/// 프로젝트의 lib/ 폴더 절대 경로 — 캔버스 파일이 「만든 자리」로 기록된 경로에서 알아낸다.
+String? _projectLib;
+
+/// 캔버스가 처음 그려질 때 한 번 부른다. [canvasWidget]은 lib/dev/canvas/ 안에서 만든 위젯.
+void rememberProjectRoot(Widget canvasWidget) {
+  if (_projectLib != null) return;
+  final file = _creationFile(canvasWidget);
+  if (file == null) return;
+  final index = file.lastIndexOf('/lib/dev/canvas/');
+  if (index >= 0) _projectLib = file.substring(0, index + '/lib/'.length);
+}
+
+String? _projectSource(Widget widget) {
+  final lib = _projectLib;
+  if (lib == null) return null;
+  final location = _creationLocation(widget);
+  if (location == null) return null;
+  final file = location.file;
+  if (!file.startsWith(lib)) return null;
+  final relative = 'lib/${file.substring(lib.length)}';
+  if (relative.startsWith('lib/dev/canvas/') ||
+      relative == 'lib/main_canvas.dart') {
+    return null;
+  }
+  return '$relative:${location.line}';
+}
+
+String? _creationFile(Widget widget) => _creationLocation(widget)?.file;
+
+/// Flutter가 디버그 실행에서 위젯마다 기록해 두는 「만든 자리」. 기록이 없으면(실서비스 빌드 등) null.
+({String file, int line})? _creationLocation(Widget widget) {
+  if (!kDebugMode ||
+      !WidgetInspectorService.instance.isWidgetCreationTracked()) {
+    return null;
+  }
+  final json = widget.toDiagnosticsNode().toJsonMap(
+    InspectorSerializationDelegate(
+      service: WidgetInspectorService.instance,
+      subtreeDepth: 0,
+    ),
+  );
+  final location = json['creationLocation'];
+  if (location is! Map) return null;
+  final file = location['file'];
+  final line = location['line'];
+  if (file is! String || line is! int) return null;
+  return (
+    file: file.startsWith('file://') ? Uri.parse(file).toFilePath() : file,
+    line: line,
+  );
+}

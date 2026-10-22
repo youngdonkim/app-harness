@@ -1,0 +1,8 @@
+# Flutter 공식 다국어 설정 — lib/l10n/의 .arb 문구 파일에서 AppLocalizations 클래스를 만듭니다.
+# 만들어지는 파일: lib/l10n/app_localizations.dart (목업 캔버스 진입점도 이 경로·이름을 씁니다)
+arb-dir: lib/l10n
+template-arb-file: app_ko.arb
+output-localization-file: app_localizations.dart
+output-class: AppLocalizations
+# AppLocalizations.of(context)가 null이 아닌 값을 돌려주게 합니다.
+nullable-getter: false

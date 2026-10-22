@@ -1,0 +1,75 @@
+// Firestore 보안 규칙 테스트 — 「남의 것은 못 읽고 못 쓴다」「보호 필드는 앱이 못 쓴다」
+// 「웹 폼 컬렉션은 서버 함수만 쓴다」을 경우마다 확인합니다.
+// 규칙·보호 필드 표·이 파일은 한 커밋에서 함께 바뀝니다.
+import { after, before, beforeEach, describe, test } from "node:test";
+import { assertFails, assertSucceeds, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
+import { deleteDoc, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { makeEnv } from "./setup.ts";
+
+let env: RulesTestEnvironment;
+
+before(async () => {
+  env = await makeEnv();
+});
+after(async () => {
+  await env.cleanup();
+});
+beforeEach(async () => {
+  await env.clearFirestore();
+});
+
+describe("users", () => {
+  test("본인 문서는 읽고 쓴다", async () => {
+    const db = env.authenticatedContext("alice").firestore();
+    await assertSucceeds(setDoc(doc(db, "users/alice"), { nickname: "앨리스" }));
+    await assertSucceeds(getDoc(doc(db, "users/alice")));
+  });
+
+  test("남의 문서는 못 읽고 못 쓴다", async () => {
+    const db = env.authenticatedContext("bob").firestore();
+    await assertFails(getDoc(doc(db, "users/alice")));
+    await assertFails(setDoc(doc(db, "users/alice"), { nickname: "가짜" }));
+  });
+
+  test("로그인하지 않으면 못 읽는다", async () => {
+    const db = env.unauthenticatedContext().firestore();
+    await assertFails(getDoc(doc(db, "users/alice")));
+  });
+
+  test("보호 필드는 앱이 못 쓴다", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "users/alice"), { nickname: "앨리스", points: 0 });
+    });
+    const db = env.authenticatedContext("alice").firestore();
+    await assertFails(updateDoc(doc(db, "users/alice"), { points: 999 }));
+    await assertFails(setDoc(doc(db, "users/carol"), { plan: "pro" }));
+    await assertSucceeds(updateDoc(doc(db, "users/alice"), { nickname: "새 이름" }));
+  });
+});
+
+describe("deletionRequests", () => {
+  test("로그인하지 않은 웹 폼도, 로그인한 앱도 직접 못 쓴다", async () => {
+    const data = { email: "a@example.com", reason: "탈퇴", createdAt: 1 };
+    await assertFails(setDoc(doc(env.unauthenticatedContext().firestore(), "deletionRequests/r1"), data));
+    await assertFails(setDoc(doc(env.authenticatedContext("alice").firestore(), "deletionRequests/r2"), data));
+  });
+
+  test("서버 함수가 쓴 요청도 아무도 못 읽고 못 고친다", async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "deletionRequests/r1"), { email: "a@example.com", reason: "", createdAt: 1 });
+    });
+    for (const db of [env.unauthenticatedContext().firestore(), env.authenticatedContext("alice").firestore()]) {
+      await assertFails(getDoc(doc(db, "deletionRequests/r1")));
+      await assertFails(updateDoc(doc(db, "deletionRequests/r1"), { reason: "변경" }));
+      await assertFails(deleteDoc(doc(db, "deletionRequests/r1")));
+    }
+  });
+});
+
+describe("나머지 경로", () => {
+  test("규칙이 없는 컬렉션은 거부된다", async () => {
+    const db = env.authenticatedContext("alice").firestore();
+    await assertFails(getDoc(doc(db, "anything/x")));
+    await assertFails(setDoc(doc(db, "anything/x"), { a: 1 }));
+  });
+});

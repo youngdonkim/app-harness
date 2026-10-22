@@ -1,0 +1,5 @@
+{
+  "name": "<저장소 이름>-tools",
+  "private": true,
+  "description": "Firebase CLI 판 고정용 — 저장소 최상위에서 npx firebase로 부릅니다"
+}

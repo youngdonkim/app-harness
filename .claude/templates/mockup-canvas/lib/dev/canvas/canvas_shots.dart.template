@@ -1,0 +1,62 @@
+// 창의 멀리서 보이는 모습 — 미리보기 그림(골든 그림)이 있으면 그 그림, 없으면 이름 카드.
+//
+// 그림은 골든 테스트(test/goldens/canvas_golden_test.dart)가 창마다 한 장씩 찍어
+// test/goldens/canvas/<창 열쇠>.png에 둔다. 시뮬레이터 앱은 맥의 그 폴더를 직접 못 읽으므로
+// 코멘트 서버(tool/canvas_server.dart)의 GET /shots/<창 열쇠>.png로 받는다.
+// 서버가 꺼져 있거나 그 창의 그림이 아직 없으면 이름 카드를 그린다.
+//
+// 그림을 다시 찍은 뒤에는 캔버스를 R(hot restart)로 다시 시작해야 새 그림이 뜬다 — 한 번 받은 그림은 앱이 기억해 둔다.
+
+import 'package:flutter/material.dart';
+
+import 'canvas_comments.dart' show canvasServerAddress;
+import 'canvas_model.dart';
+
+/// CanvasConfig.thumbnail에 꽂는다(lib/main_canvas.dart).
+Widget? canvasShotThumbnail(BuildContext context, CanvasFrame frame) {
+  final card = CanvasNameCard(frame: frame);
+  return Image.network(
+    '$canvasServerAddress/shots/${frame.key}.png',
+    fit: BoxFit.cover,
+    alignment: Alignment.topCenter,
+    // 멀리서만 보는 그림이라 작게 풀어 둔다 — 창이 수십 개여도 메모리를 덜 쓴다
+    cacheWidth: (frame.viewport.size.width * 0.6).round(),
+    frameBuilder: (context, child, loaded, _) => loaded == null ? card : child,
+    errorBuilder: (context, _, _) => card,
+  );
+}
+
+/// 이름 카드 — 화면 ID·화면 이름·창 이름(폰 크기·상태)
+class CanvasNameCard extends StatelessWidget {
+  const CanvasNameCard({super.key, required this.frame});
+
+  final CanvasFrame frame;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(frame.screen.id, style: text.displayMedium),
+            const SizedBox(height: 16),
+            Text(
+              frame.screen.name,
+              style: text.headlineMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              frame.label,
+              style: text.titleLarge,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

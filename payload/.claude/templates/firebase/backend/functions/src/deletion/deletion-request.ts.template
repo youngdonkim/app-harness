@@ -1,0 +1,106 @@
+// 계정 삭제 요청 받기 — Hosting 웹 페이지(delete-account)의 폼이 보내는 요청을 받는 HTTP 함수.
+//
+// 왜 HTTP 함수(onRequest)인가: 폼은 앱이 아니라 웹 페이지라 App Check 토큰이 없습니다.
+// 폼이 Firestore에 바로 쓰면 Firestore의 App Check 강제를 켜는 순간 막힙니다.
+// 그래서 폼은 이 함수 하나로 보내고, 이 함수가 검사한 뒤 관리자 권한으로 씁니다.
+// 「onRequest는 웹훅에만」 규칙(4-1-backend-db.md)의 정해진 예외입니다.
+//
+// - 주소: Hosting이 같은 사이트의 /api/deletion-request를 이 함수로 넘깁니다(firebase.json의 hosting.rewrites).
+//   그래서 폼에 프로젝트 값을 적지 않고, CORS(다른 사이트에서 부르기 허락)도 열지 않습니다.
+// - 리전은 index.ts의 setGlobalOptions가 정합니다(config/region.ts). firebase.json 재작성 규칙의 region과 같아야 합니다.
+// - Firestore 규칙은 deletionRequests의 클라이언트 쓰기를 전부 막습니다 — 이 함수만 씁니다.
+// - 필드를 더하려면 이 파일의 검사·단위 테스트·폼(delete-account.js)을 한 커밋에서 함께 고칩니다.
+import { onRequest } from "firebase-functions/v2/https";
+import { logger } from "firebase-functions/v2";
+import { FieldValue, Timestamp, getFirestore } from "firebase-admin/firestore";
+
+export const COLLECTION = "deletionRequests";
+export const EMAIL_MAX = 320;
+export const REASON_MAX = 500;
+/** 같은 이메일로는 이 시간 안에 한 번만 새 요청을 남깁니다. */
+export const SAME_EMAIL_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export type ParseResult =
+  | { ok: true; email: string; reason: string; bot: boolean }
+  | { ok: false; error: "bad-request" | "invalid-email" | "reason-too-long" };
+
+/** 폼이 보낸 본문을 검사합니다. 이메일은 앞뒤 공백을 떼고 소문자로 맞춥니다. */
+export function parseDeletionRequest(body: unknown): ParseResult {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return { ok: false, error: "bad-request" };
+  }
+  const { email, reason, website } = body as Record<string, unknown>;
+  // 봇이 채우는 빈칸(사람에게 안 보이는 칸) — 채워졌으면 받은 척만 하고 쓰지 않습니다.
+  const bot = typeof website === "string" && website !== "";
+  if (typeof email !== "string") return { ok: false, error: "invalid-email" };
+  const normalized = email.trim().toLowerCase();
+  if (normalized === "" || normalized.length > EMAIL_MAX || !EMAIL_RE.test(normalized)) {
+    return { ok: false, error: "invalid-email" };
+  }
+  if (reason !== undefined && typeof reason !== "string") return { ok: false, error: "bad-request" };
+  const trimmedReason = (reason ?? "").trim();
+  if (trimmedReason.length > REASON_MAX) return { ok: false, error: "reason-too-long" };
+  return { ok: true, email: normalized, reason: trimmedReason, bot };
+}
+
+/** 저장소 — 실제로는 Firestore, 단위 테스트에서는 가짜를 넣습니다. */
+export interface DeletionRequestStore {
+  /** 같은 이메일의 요청이 windowMs 안에 없으면 새로 쓰고 true, 있으면 쓰지 않고 false. */
+  addUnlessRecent(email: string, reason: string, windowMs: number): Promise<boolean>;
+}
+
+export interface HandlerResult {
+  status: number;
+  body: { result: "received" } | { error: string };
+}
+
+/** 요청 하나를 처리합니다. 새로 썼든, 최근 요청이 있어 건너뛰었든, 봇이든 같은 답을 돌려줍니다 —
+ *  어떤 이메일이 요청했는지 바깥에서 알아낼 수 없게 하려는 것입니다. */
+export async function handleDeletionRequest(
+  method: string,
+  body: unknown,
+  store: DeletionRequestStore,
+): Promise<HandlerResult> {
+  if (method !== "POST") return { status: 405, body: { error: "method-not-allowed" } };
+  const parsed = parseDeletionRequest(body);
+  if (!parsed.ok) return { status: 400, body: { error: parsed.error } };
+  if (!parsed.bot) {
+    await store.addUnlessRecent(parsed.email, parsed.reason, SAME_EMAIL_WINDOW_MS);
+  }
+  return { status: 200, body: { result: "received" } };
+}
+
+/** Firestore 저장소 — 같은 이메일의 최근 요청 확인과 쓰기를 한 트랜잭션에서 합니다.
+ *  email 하나로만 거르므로 단일 필드 색인으로 충분합니다(복합 색인 필요 없음). */
+export function firestoreStore(): DeletionRequestStore {
+  return {
+    async addUnlessRecent(email, reason, windowMs) {
+      const db = getFirestore();
+      const col = db.collection(COLLECTION);
+      return db.runTransaction(async (tx) => {
+        const since = Timestamp.fromMillis(Date.now() - windowMs);
+        const same = await tx.get(col.where("email", "==", email));
+        const recent = same.docs.some((d) => {
+          const at = d.get("createdAt");
+          return at instanceof Timestamp && at.toMillis() >= since.toMillis();
+        });
+        if (recent) return false;
+        tx.create(col.doc(), { email, reason, createdAt: FieldValue.serverTimestamp() });
+        return true;
+      });
+    },
+  };
+}
+
+// 인스턴스 수를 작게 묶어, 누가 마구 불러도 비용이 크게 늘지 않게 합니다.
+export const deletionRequest = onRequest({ maxInstances: 2 }, async (req, res) => {
+  try {
+    const result = await handleDeletionRequest(req.method, req.body, firestoreStore());
+    res.status(result.status).json(result.body);
+  } catch (err) {
+    logger.error("deletionRequest failed", err);
+    res.status(500).json({ error: "internal" });
+  }
+});

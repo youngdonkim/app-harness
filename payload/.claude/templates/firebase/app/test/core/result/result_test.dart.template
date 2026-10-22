@@ -1,0 +1,23 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:<앱>/core/result/result.dart';
+
+void main() {
+  test('성공하면 Ok에 값을 담는다', () async {
+    final result = await Result.guard(() async => 3);
+    expect(result, isA<Ok<int>>());
+    expect((result as Ok<int>).value, 3);
+  });
+
+  test('모르는 예외는 UnknownError가 된다', () async {
+    final result = await Result.guard<int>(() async => throw StateError('x'));
+    expect((result as Err<int>).error, isA<UnknownError>());
+  });
+
+  test('아는 예외는 mapError가 고른 갈래가 된다', () async {
+    final result = await Result.guard<int>(
+      () async => throw const FormatException(),
+      mapError: (e) => e is FormatException ? const NotFoundError() : null,
+    );
+    expect((result as Err<int>).error, isA<NotFoundError>());
+  });
+}

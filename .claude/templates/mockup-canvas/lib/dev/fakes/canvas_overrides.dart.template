@@ -1,0 +1,22 @@
+// 목업 캔버스가 모든 창에 거는 provider 덮어쓰기 — 저장·조회 provider를 가짜 저장소로 바꾼다.
+// 캔버스는 Firebase에 붙지 않는다. 저장·조회 provider를 새로 만들면 여기에 한 줄 더한다.
+// 가짜 저장소도 devStateProvider를 읽어, 상태 흉내를 진짜 저장소와 같은 길(devStateAnswer)로 돌린다.
+//
+// 한 줄의 모양:
+//
+//   meetingRepositoryProvider.overrideWith(
+//     (ref) => FakeMeetingRepository(devState: ref.watch(devStateProvider)),
+//   ),
+//
+// 가짜 저장소 파일은 이 폴더(lib/dev/fakes/)에 흐름마다 하나씩 둔다(예: fake_meeting_repository.dart).
+// 견본 데이터는 lib/features/<흐름>/data/의 견본 목록에 두고 가짜 저장소가 가져다 쓴다
+// (실서비스 진입점이 lib/dev/를 부르면 안 되므로 — 디자인 규칙 검사 13번). 위젯 테스트도 같은 가짜를 쓴다.
+
+import 'package:flutter_riverpod/misc.dart' show Override;
+
+import '../../app/flavor.dart';
+
+final canvasFakeOverrides = <Override>[
+  // 개발용·실서비스용 갈래 — 진입점이 넣어야 하는 값이다. 캔버스는 개발용으로 띄운다(안 넣으면 읽는 순간 실패한다)
+  appFlavorProvider.overrideWithValue(AppFlavor.dev),
+];

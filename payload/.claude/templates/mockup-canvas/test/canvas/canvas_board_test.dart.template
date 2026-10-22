@@ -1,0 +1,183 @@
+// 목업 캔버스 위젯 검사 — 판이 그려지고, 창마다 상태가 갈리고, 코멘트가 저장소에 남는지.
+// 프로젝트 화면 대신 이 파일 안의 작은 화면 둘로 시험한다(프로젝트 화면이 바뀌어도 이 검사는 그대로 돈다).
+import 'package:<앱>/core/dev_state/dev_state.dart';
+import 'package:<앱>/dev/canvas/canvas_app.dart';
+import 'package:<앱>/dev/canvas/canvas_comments.dart';
+import 'package:<앱>/dev/canvas/canvas_config.dart';
+import 'package:<앱>/dev/canvas/canvas_model.dart';
+import 'package:<앱>/dev/canvas/canvas_phone.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+
+/// 가짜 저장소 자리 — 상태 흉내를 거쳐 견본 글자를 돌려준다
+final _greetingProvider = FutureProvider<String>((ref) async {
+  final answer = await devStateAnswer<String>(
+    ref.watch(devStateProvider),
+    empty: () => '비어 있음',
+    failure: (state) => '실패: ${state.name}',
+  );
+  return answer ?? (ref.watch(devGuestProvider) ? '로그인 전 인사' : '견본 인사');
+});
+
+class _HelloScreen extends ConsumerWidget {
+  const _HelloScreen();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
+    appBar: AppBar(title: const Text('인사 화면')),
+    body: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(ref.watch(_greetingProvider).value ?? '불러오는 중'),
+          TextButton(
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (_) => const AlertDialog(content: Text('창 안 대화상자')),
+            ),
+            child: const Text('대화상자 열기'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+GoRouter _router(ProviderContainer container, String location) => GoRouter(
+  initialLocation: location,
+  routes: [GoRoute(path: '/hello', builder: (_, _) => const _HelloScreen())],
+);
+
+void main() {
+  late MemoryCanvasCommentStore store;
+
+  Future<void> pumpCanvas(
+    WidgetTester tester,
+    List<CanvasScreen> screens,
+  ) async {
+    tester.view.physicalSize =
+        const Size(1366, 1024) * tester.view.devicePixelRatio;
+    addTearDown(tester.view.reset);
+    store = MemoryCanvasCommentStore();
+    await tester.pumpWidget(
+      CanvasApp(
+        config: CanvasConfig(
+          screens: screens,
+          theme: ThemeData(useMaterial3: true),
+          createRouter: _router,
+          comments: store,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+  }
+
+  Future<void> unmount(WidgetTester tester) async {
+    await tester.pumpWidget(const SizedBox());
+  }
+
+  const hello = CanvasScreen(
+    id: 'S-01',
+    name: '인사',
+    group: '방문자: 인사 받기',
+    path: '/hello',
+    states: [DevState.empty, DevState.error],
+  );
+
+  final enlarged = find.byKey(const ValueKey('canvas-enlarged'));
+  Finder inEnlarged(Finder finder) =>
+      find.descendant(of: enlarged, matching: finder);
+
+  testWidgets('멀리서는 이름 카드, 확대하면 실제 화면, 「크게」로 하나만 크게', (tester) async {
+    await pumpCanvas(tester, const [hello]);
+    expect(find.text('방문자: 인사 받기'), findsWidgets);
+    expect(find.byType(CanvasPhone), findsNothing); // 화면에 맞춘 배율에서는 이름 카드만
+
+    await tester.tap(find.byTooltip('확대'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(CanvasPhone), findsWidgets); // 확대하면 보이는 창이 실제 화면으로
+
+    await tester.tap(find.text('크게').first);
+    await tester.pump();
+    await tester.pump();
+    expect(inEnlarged(find.text('견본 인사')), findsOneWidget);
+    await unmount(tester);
+  });
+
+  testWidgets('창마다 다른 상태가 같은 저장·조회 길로 그려진다', (tester) async {
+    await pumpCanvas(tester, const [hello]);
+    final labels = ['보통 폰 · 빈 상태', '보통 폰 · 오류'];
+    final expected = ['비어 있음', '실패: error'];
+    for (var i = 0; i < labels.length; i++) {
+      final row = find
+          .ancestor(of: find.text(labels[i]), matching: find.byType(Row))
+          .first;
+      await tester.tap(find.descendant(of: row, matching: find.text('크게')));
+      await tester.pump();
+      await tester.pump();
+      expect(inEnlarged(find.text(expected[i])), findsOneWidget);
+      await tester.tap(find.byTooltip('닫기 (Esc)'));
+      await tester.pump();
+    }
+    await unmount(tester);
+  });
+
+  testWidgets('경로 끝 ?as=guest는 「로그인 전」으로 뜬다', (tester) async {
+    await pumpCanvas(tester, const [
+      CanvasScreen(
+        id: 'S-02',
+        name: '인사(로그인 전)',
+        group: '방문자: 인사 받기',
+        path: '/hello?as=guest',
+      ),
+    ]);
+    await tester.tap(find.text('크게').first);
+    await tester.pump();
+    await tester.pump();
+    expect(inEnlarged(find.text('로그인 전 인사')), findsOneWidget);
+    await unmount(tester);
+  });
+
+  testWidgets('창 안 대화상자는 그 창 안에 뜬다', (tester) async {
+    await pumpCanvas(tester, const [hello]);
+    await tester.tap(find.text('크게').first);
+    await tester.pump();
+    await tester.pump();
+    await tester.tap(inEnlarged(find.text('대화상자 열기')));
+    await tester.pumpAndSettle();
+    expect(inEnlarged(find.text('창 안 대화상자')), findsOneWidget);
+    await unmount(tester);
+  });
+
+  testWidgets('코멘트 달기 — 누른 자리의 단서와 함께 저장되고 핀이 꽂힌다', (tester) async {
+    await pumpCanvas(tester, const [hello]);
+    await tester.tap(find.text('크게').first);
+    await tester.pump();
+    await tester.pump();
+
+    await tester.tap(find.widgetWithText(FilterChip, '코멘트 달기').last);
+    await tester.pump();
+    await tester.tap(inEnlarged(find.text('견본 인사')));
+    await tester.pump();
+    expect(find.text('코멘트 남기기'), findsOneWidget);
+    expect(find.textContaining('「견본 인사」'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '인사를 더 친근하게');
+    await tester.tap(find.text('핀 꽂기'));
+    await tester.pump();
+    await tester.pump();
+
+    final saved = store.items.single;
+    expect(saved.screenId, 'S-01');
+    expect(saved.viewport, 'phone');
+    expect(saved.state, isNull);
+    expect(saved.target.text, '견본 인사');
+    expect(saved.comment, '인사를 더 친근하게');
+    expect(inEnlarged(find.byType(CanvasPin)), findsOneWidget);
+    await unmount(tester);
+  });
+}

@@ -1,0 +1,6 @@
+// 자동으로 만든 파일 — 손으로 고치지 않는다. 고칠 것은 screens.dart에 적는다.
+// mvp/feature-list.md의 화면 목록 표·상태 표에서 `dart run tool/canvas_list.dart`가 통째로 다시 쓴다.
+
+import 'canvas_model.dart';
+
+const generatedScreens = <CanvasScreen>[];

@@ -1,0 +1,97 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  type DeletionRequestStore,
+  EMAIL_MAX,
+  REASON_MAX,
+  SAME_EMAIL_WINDOW_MS,
+  handleDeletionRequest,
+  parseDeletionRequest,
+} from "./deletion-request.js";
+
+/** 가짜 저장소 — 이메일마다 마지막으로 쓴 시각을 기억합니다. */
+function fakeStore(now: () => number) {
+  const written: { email: string; reason: string }[] = [];
+  const lastAt = new Map<string, number>();
+  const store: DeletionRequestStore = {
+    async addUnlessRecent(email, reason, windowMs) {
+      const last = lastAt.get(email);
+      if (last !== undefined && now() - last < windowMs) return false;
+      lastAt.set(email, now());
+      written.push({ email, reason });
+      return true;
+    },
+  };
+  return { store, written };
+}
+
+test("이메일을 다듬고 소문자로 맞춘다", () => {
+  assert.deepEqual(parseDeletionRequest({ email: "  A@Example.com ", reason: " 탈퇴 " }), {
+    ok: true,
+    email: "a@example.com",
+    reason: "탈퇴",
+    bot: false,
+  });
+});
+
+test("이메일 형식·길이가 틀리면 invalid-email", () => {
+  for (const email of ["", "abc", "a@b", "a b@c.d", 42, undefined, `${"a".repeat(EMAIL_MAX)}@x.io`]) {
+    assert.deepEqual(parseDeletionRequest({ email }), { ok: false, error: "invalid-email" }, String(email));
+  }
+});
+
+test("이유가 너무 길면 reason-too-long, 문자열이 아니면 bad-request", () => {
+  assert.deepEqual(parseDeletionRequest({ email: "a@b.co", reason: "가".repeat(REASON_MAX + 1) }), {
+    ok: false,
+    error: "reason-too-long",
+  });
+  assert.equal(parseDeletionRequest({ email: "a@b.co", reason: "가".repeat(REASON_MAX) }).ok, true);
+  assert.deepEqual(parseDeletionRequest({ email: "a@b.co", reason: 1 }), { ok: false, error: "bad-request" });
+});
+
+test("본문이 객체가 아니면 bad-request", () => {
+  for (const body of [null, "a@b.co", [], 1]) {
+    assert.deepEqual(parseDeletionRequest(body), { ok: false, error: "bad-request" });
+  }
+});
+
+test("POST가 아니면 405", async () => {
+  const { store, written } = fakeStore(() => 0);
+  const res = await handleDeletionRequest("GET", undefined, store);
+  assert.equal(res.status, 405);
+  assert.equal(written.length, 0);
+});
+
+test("올바른 요청은 쓰고 received", async () => {
+  const { store, written } = fakeStore(() => 0);
+  const res = await handleDeletionRequest("POST", { email: "a@b.co", reason: "" }, store);
+  assert.deepEqual(res, { status: 200, body: { result: "received" } });
+  assert.deepEqual(written, [{ email: "a@b.co", reason: "" }]);
+});
+
+test("잘못된 요청은 400이고 쓰지 않는다", async () => {
+  const { store, written } = fakeStore(() => 0);
+  const res = await handleDeletionRequest("POST", { email: "nope" }, store);
+  assert.deepEqual(res, { status: 400, body: { error: "invalid-email" } });
+  assert.equal(written.length, 0);
+});
+
+test("봇 빈칸이 채워지면 받은 척만 하고 쓰지 않는다", async () => {
+  const { store, written } = fakeStore(() => 0);
+  const res = await handleDeletionRequest("POST", { email: "a@b.co", website: "http://spam" }, store);
+  assert.equal(res.status, 200);
+  assert.equal(written.length, 0);
+});
+
+test("같은 이메일은 정해진 시간 안에 한 번만 쓰고, 답은 같다", async () => {
+  let now = 0;
+  const { store, written } = fakeStore(() => now);
+  const first = await handleDeletionRequest("POST", { email: "a@b.co" }, store);
+  const again = await handleDeletionRequest("POST", { email: "A@B.co " }, store);
+  assert.deepEqual(again, first);
+  assert.equal(written.length, 1);
+
+  now = SAME_EMAIL_WINDOW_MS;
+  await handleDeletionRequest("POST", { email: "a@b.co" }, store);
+  assert.equal(written.length, 2);
+});

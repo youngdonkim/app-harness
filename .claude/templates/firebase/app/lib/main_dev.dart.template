@@ -1,0 +1,17 @@
+import 'app/bootstrap.dart';
+import 'app/flavor.dart';
+import 'dev/dev_flavor_banner.dart';
+import 'dev/dev_route_state.dart';
+
+/// 개발용 진입점 — 개발용 Firebase 프로젝트에 붙고, 「개발」 띠를 그리고,
+/// 주소의 `?state=`·`?as=`로 상태 흉내를 켭니다.
+///
+/// `fvm flutter run --flavor dev -t lib/main_dev.dart`
+Future<void> main() => bootstrap(
+  AppFlavor.dev,
+  wrap: (app) => DevFlavorBanner(child: app),
+  overrides: devRouteStateOverrides,
+  // 라우터의 개발용 경로 주입 자리 — 2-3 비교안을 셸 안에 등록할 때만 켠다(router.dart).
+  // main_prod.dart 는 넘기지 않는다.
+  // devBranchRoutes: draftDevBranchRoutes, // lib/dev/drafts/dev_routes.dart
+);

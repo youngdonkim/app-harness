@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "<패키지 이름>",
+      "sha256_cert_fingerprints": [
+        "<플레이 앱 서명 키의 SHA-256 지문>",
+        "<업로드 키의 SHA-256 지문>"
+      ]
+    }
+  }
+]

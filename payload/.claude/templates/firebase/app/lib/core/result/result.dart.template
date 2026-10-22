@@ -1,0 +1,45 @@
+import 'app_error.dart';
+
+export 'app_error.dart';
+
+/// 저장·조회 함수의 돌려주는 값 — 「성공(값) 또는 실패(AppError)」.
+///
+/// 저장·조회 코드는 예외를 화면까지 던지지 않고 이 값을 돌려줍니다.
+/// 화면은 `switch`로 두 갈래를 모두 다룹니다.
+///
+/// ```dart
+/// switch (await repository.load(id)) {
+///   case Ok(:final value):
+///     ...
+///   case Err(:final error):
+///     ...
+/// }
+/// ```
+sealed class Result<T> {
+  const Result();
+
+  /// 실패 예외를 [AppError]로 바꿔 감싸는 도우미.
+  ///
+  /// [mapError]는 이 저장소가 아는 예외(예: Firestore의 permission-denied)를
+  /// 갈래로 바꿉니다. 모르는 예외는 [UnknownError]가 됩니다.
+  static Future<Result<T>> guard<T>(
+    Future<T> Function() run, {
+    AppError? Function(Object error)? mapError,
+  }) async {
+    try {
+      return Ok(await run());
+    } catch (e) {
+      return Err(mapError?.call(e) ?? UnknownError(cause: e));
+    }
+  }
+}
+
+final class Ok<T> extends Result<T> {
+  const Ok(this.value);
+  final T value;
+}
+
+final class Err<T> extends Result<T> {
+  const Err(this.error);
+  final AppError error;
+}

@@ -1,0 +1,7 @@
+import '../../app/flavor.dart';
+
+/// 앱이 시작할 때 백엔드를 준비하는 자리.
+///
+/// 2·3단계에는 백엔드가 없어 아무것도 하지 않습니다. 4단계 준비(4-0)에서
+/// Firebase를 붙이는 판으로 이 파일을 바꿉니다.
+Future<void> initBackend(AppFlavor flavor) async {}
