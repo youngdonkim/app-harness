@@ -1,7 +1,7 @@
 // 폰 틀 — 창 하나에 실제 앱 화면을 띄운다.
 //
 // 창마다 provider 묶음(ProviderContainer)과 라우터를 따로 만든다. 그래서
-// - 창마다 다른 상태(devStateProvider)·「로그인 전」(devGuestProvider)을 동시에 띄우고,
+// - 창마다 다른 상태(devStateProvider)·「로그인 전」(devGuestProvider)·머무는 공간의 가까이(devFocusProvider)·많을 때(devManyProvider)를 동시에 띄우고,
 // - 한 창에서 누르고 옮겨 다녀도 다른 창은 그대로다.
 // 창의 provider 묶음은 캔버스 바깥 묶음의 자식이 아니라 독립된 뿌리다 — 덮어쓰기가 어느 provider에든 그대로 듣는다.
 
@@ -66,6 +66,8 @@ class _CanvasPhoneState extends State<CanvasPhone> {
         ...widget.config.overrides,
         devStateProvider.overrideWithValue(frame.state),
         devGuestProvider.overrideWithValue(frame.guest),
+        devFocusProvider.overrideWithValue(frame.draft?.focus),
+        devManyProvider.overrideWithValue(frame.draft?.many ?? false),
       ],
     );
     final location = frame.location;

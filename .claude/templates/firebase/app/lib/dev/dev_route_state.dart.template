@@ -7,7 +7,10 @@ import '../core/dev_state/dev_state.dart';
 ///
 /// `/meetings?state=empty`로 열면 저장·조회 코드가 빈 결과를 돌려주고,
 /// `?as=guest`면 「로그인 전」으로 답합니다 — 화면 목록·상태 표의 `?state=`
-/// 표기가 개발용 앱에서도 그대로 통합니다. `main_dev.dart`만 넘깁니다.
+/// 표기가 개발용 앱에서도 그대로 통합니다. 머무는 공간(2-4)의
+/// `?focus={물건 id}`는 가까이 다가간 모습으로, `?state=many`는 데이터가
+/// 많을 때 모습으로 엽니다(`many`는 DevState 가 아니라 따로 읽습니다).
+/// `main_dev.dart`만 넘깁니다.
 /// 실서비스 진입점은 넘기지 않으므로 상태 흉내가 늘 꺼져 있습니다.
 final devRouteStateOverrides = <Override>[
   devStateProvider.overrideWith(
@@ -18,5 +21,12 @@ final devRouteStateOverrides = <Override>[
   devGuestProvider.overrideWith(
     (ref) =>
         ref.watch(currentLocationProvider).queryParameters['as'] == 'guest',
+  ),
+  devFocusProvider.overrideWith(
+    (ref) => ref.watch(currentLocationProvider).queryParameters['focus'],
+  ),
+  devManyProvider.overrideWith(
+    (ref) =>
+        ref.watch(currentLocationProvider).queryParameters['state'] == 'many',
   ),
 ];

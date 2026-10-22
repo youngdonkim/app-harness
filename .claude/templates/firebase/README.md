@@ -85,7 +85,7 @@ MeetingRepository meetingRepository(Ref ref) =>
 | `lib/core/result/result.dart`·`app_error.dart` | `Result<T>`·`AppError` |
 | `lib/core/firebase/backend_init.dart` | 백엔드 준비 자리 — 이 묶음에서는 아무것도 하지 않습니다. 4-0에서 Firebase 판으로 바뀝니다 |
 | `lib/dev/dev_flavor_banner.dart` | 「개발」 띠 |
-| `lib/dev/dev_route_state.dart` | 주소의 `?state=`·`?as=guest`를 상태 흉내(`devStateProvider`·`devGuestProvider`)에 넣는 덮어쓰기 |
+| `lib/dev/dev_route_state.dart` | 주소의 `?state=`·`?as=guest`를 상태 흉내(`devStateProvider`·`devGuestProvider`)에, 머무는 공간(2-4)의 `?focus=`·`?state=many`를 `devFocusProvider`·`devManyProvider`에 넣는 덮어쓰기 |
 | `lib/l10n/app_ko.arb`, `l10n.yaml` | Flutter 공식 다국어 설정과 한국어 문구 파일. `lib/l10n/app_localizations.dart`의 `AppLocalizations`가 만들어집니다 |
 | `test/…` | `Result`·「개발」 띠·라우터(화면 목록의 경로마다 맞는 길이 있는지 — 3단계에서 `screenPaths`에 경로를 채웁니다, 동시에 둘 만들기, `?state=` 읽기, 실서비스는 꺼짐) 테스트 |
 | `tool/check_firebase_config.dart` | 설정 파일 대조와 flavor 경계 검사(§5) |

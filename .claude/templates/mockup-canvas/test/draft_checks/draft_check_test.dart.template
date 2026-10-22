@@ -1,5 +1,12 @@
-// 2-3 비교안 자기 점검 테스트 틀 — 판 하나가 자기 화면을 위젯 테스트로 그림 찍고 눌러 보며 고치는 데 쓴다.
-// 프로젝트에는 test/draft_checks/<판>_check_test.dart 로 복사한다(<판> = bold · innov · leap 중 하나, 판마다 파일 하나).
+// 2-3 비교안·2-4 머무는 공간 자기 점검 테스트 틀 — 판 하나가 자기 화면을 위젯 테스트로 그림 찍고 눌러 보며 고치는 데 쓴다.
+// 프로젝트에는 test/draft_checks/<판>_check_test.dart 로 복사한다(<판> = bold · innov · leap · stay 중 하나, 판마다 파일 하나).
+//
+// 묶음 고르기 — 판마다 쓰는 테스트만 남기고 나머지는 지운다.
+//   대담판(bold)  ①②③④            (⑤·⑥·S② ~ S④ 지움)
+//   혁신판(innov) ①②③④⑤⑥          (S② ~ S④ 지움)
+//   파격판(leap)  ①②③④⑤            (⑥·S② ~ S④ 지움)
+//   머무는 공간(stay) ①②③④⑤ + S② ~ S④ (⑥ 지움) — 2-4 문서의 다섯 묶음과는 이렇게 맞는다:
+//     「① 멀리」 = ①②, 「② 가까이」 = S②, 「③ 내용 열림」 = S③, 「④ 빈·많음」 = S④, 「⑤ 동작 줄이기·글자 2배·대신 화면·진동」 = ③④⑤ + S②의 진동 단언
 // 이것은 만드는 손의 점검이지 판정이 아니다. 그림이 쓸 만한지는 사람이 본다 — 보고에 「확인 완료」를 쓰지 않고 해 본 것과 고친 것만 쓴다.
 //
 // 지켜야 할 것
@@ -28,8 +35,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:<앱>/core/dev_state/dev_state.dart'; // 상태 흉내 — S②·S④ 가 devFocusProvider·devManyProvider·devStateProvider 를 덮어쓴다
 import 'package:<앱>/core/design/drafts/<판>.dart'; // 이 판의 토큰과 테마 함수 (예: draftBold · draftBoldTheme())
 // (판 테마 함수가 buildAppTheme을 부르고 판 접두 확장을 펼쳐 얹는다 — 여기서 buildAppTheme을 직접 부르지 않는다)
 import 'package:<앱>/dev/drafts/<판>/<화면 파일>.dart'; // 이 판의 화면 위젯 (파일 이름은 소문자_밑줄, 위젯 이름은 아래 <판 화면>)
@@ -48,6 +58,30 @@ const _settleSteps = 5;
 const _settleStep = Duration(milliseconds: 100);
 
 final _boundary = GlobalKey();
+
+/// 진동 호출 기록 — HapticFeedback 은 SystemChannels.platform 으로 'HapticFeedback.vibrate' 를 보낸다.
+/// 가로채면 종류(예: 'HapticFeedbackType.selectionClick')와 횟수를 셀 수 있다(2026-10-22 Flutter 확인 실험).
+final _platformCalls = <MethodCall>[];
+List<Object?> _haptics() => [
+  for (final c in _platformCalls)
+    if (c.method == 'HapticFeedback.vibrate') c.arguments,
+];
+void _recordPlatformCalls(WidgetTester t) {
+  _platformCalls.clear();
+  t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.platform,
+    (call) async {
+      _platformCalls.add(call);
+      return null;
+    },
+  );
+  addTearDown(
+    () => t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      null,
+    ),
+  );
+}
 
 /// 한글 글꼴 파일 — 맥에 있는 첫 번째 것. 프로젝트에 한글 글꼴 파일이 있으면 그 경로를 맨 앞에 더한다(기기와 상관없이 같은 그림이 나온다).
 ByteData? _koreanFontBytes() {
@@ -114,6 +148,7 @@ Widget _host(
   Widget screen, {
   bool disableAnimations = false,
   double textScale = 1,
+  List<Override> overrides = const [],
 }) {
   final base = draft<판>Theme(); // 이 판의 테마 — 기본 확장 위에 판 접두 확장까지 얹혀 있다
   final theme = base.copyWith(
@@ -122,7 +157,7 @@ Widget _host(
     // extensions: [...base.extensions.values, 판전용확장(…)],
   );
   return ProviderScope(
-    overrides: canvasFakeOverrides,
+    overrides: [...canvasFakeOverrides, ...overrides],
     child: MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: theme,
@@ -146,6 +181,7 @@ Future<void> _pumpScreen(
   Size size, {
   bool disableAnimations = false,
   double textScale = 1,
+  List<Override> overrides = const [],
 }) async {
   t.view.physicalSize = size;
   t.view.devicePixelRatio = 1;
@@ -155,6 +191,7 @@ Future<void> _pumpScreen(
       const <판 화면>(), // 이 판의 화면 위젯 (const 가 아니면 const 를 뗀다)
       disableAnimations: disableAnimations,
       textScale: textScale,
+      overrides: overrides,
     ),
   );
   await _settle(t);
@@ -235,5 +272,105 @@ void main() {
     await _pumpScreen(t, _phone);
     await _shoot(t, '5-fallback');
     expect(find.text('<대체 화면에 보여야 하는 글자>'), findsOneWidget);
+  });
+
+  // ⑥ 조작 중간 상태 — 혁신판만. 손맛(누를 때의 저항·놓았을 때 되돌아옴·진동)은 끝난 화면만 찍어서는 모른다.
+  // 손을 떼기 전에 찍을 수 있다(2026-10-22 Flutter 확인 실험: startGesture 뒤 up 전에 RepaintBoundary.toImage 로 고리가 절반 찬 그림이 찍혔다).
+  testWidgets('⑥ 조작 중간 상태', (t) async {
+    _recordPlatformCalls(t);
+    await _pumpScreen(t, _phone);
+    final target = t.getCenter(find.byKey(const Key('<조작 대상>'))); // 조작 부품에 Key 를 단다
+    // ⓐ 길게 누르기 — 먼저 kLongPressTimeout 만큼 흘려야 길게 누르기로 잡힌다. 그다음 차오르는 중간에 찍는다
+    final g = await t.startGesture(target);
+    await t.pump(kLongPressTimeout + const Duration(milliseconds: 10));
+    for (var i = 0; i < 18; i++) {
+      await t.pump(const Duration(milliseconds: 16));
+    }
+    await _shoot(t, '6a-holding'); // 손을 떼기 전 — 차오르는 고리·눌림
+    // (끌기면: 위 startGesture 뒤에 moveBy 를 작은 걸음으로 몇 번 + pump 하고 찍는다 — 손가락 아래 무게)
+    // ⓑ 중간에 놓기 — 되돌아온 모습과 안내 한 줄
+    await g.up();
+    for (var i = 0; i < 40; i++) {
+      await t.pump(const Duration(milliseconds: 16));
+    }
+    await _shoot(t, '6b-released-early');
+    expect(find.text('<중간에 놓았을 때의 안내 한 줄>'), findsOneWidget);
+    // ⓒ 진동 — 손맛 순간에만, 같은 손동작 중 되풀이하지 않는다(종류와 수는 이 판의 손맛에 맞게 고친다)
+    expect(_haptics(), ['HapticFeedbackType.selectionClick']);
+    // ⓓ 끝까지 하면 보상 연출 + mediumImpact 한 번
+    final g2 = await t.startGesture(target);
+    await t.pump(kLongPressTimeout + const Duration(milliseconds: 10));
+    for (var i = 0; i < 60; i++) {
+      await t.pump(const Duration(milliseconds: 16));
+    }
+    await g2.up();
+    await _settle(t);
+    await _shoot(t, '6c-done');
+    expect(_haptics().last, 'HapticFeedbackType.mediumImpact');
+  });
+
+  // ---- 아래 S② ~ S④ 는 2-4 머무는 공간(stay)만. 다른 판은 지운다 ----
+
+  // S② 가까이 — 두 길을 다 찍는다: ⓐ 처음부터 가까이(캔버스 「가까이」 창과 같은 그림) ⓑ 눌러서 다가가는 중간과 끝
+  testWidgets('S② 가까이', (t) async {
+    _recordPlatformCalls(t);
+    await _pumpScreen(
+      t,
+      _phone,
+      overrides: [devFocusProvider.overrideWithValue('<물건 id>')],
+    );
+    await _shoot(t, 's2a-focus');
+    expect(find.text('<가까이에서만 보이는 세부 글자>'), findsOneWidget); // 지시서 「가까이 세부」 중 하나
+
+    await t.pumpWidget(const SizedBox());
+    await _pumpScreen(t, _phone);
+    await t.tap(find.bySemanticsLabel('<물건 이름표>'));
+    for (var i = 0; i < 10; i++) {
+      await t.pump(const Duration(milliseconds: 16));
+    }
+    await _shoot(t, 's2b-approaching'); // 다가가는 중간
+    for (var i = 0; i < 40; i++) {
+      await t.pump(const Duration(milliseconds: 16));
+    }
+    await _shoot(t, 's2c-near');
+    expect(find.text('<가까이에서만 보이는 세부 글자>'), findsOneWidget);
+    expect(_haptics(), ['HapticFeedbackType.selectionClick']); // 물건을 고를 때 한 번
+    // 소리 재생 패키지를 들였으면 여기서 그 패키지 채널 호출이 0인지도 본다(소리는 기본 꺼짐)
+  });
+
+  // S③ 내용 열림 — 가까이 본 뒤 한 번 더 누르면 아래에서 올라오는 판
+  testWidgets('S③ 내용 열림', (t) async {
+    await _pumpScreen(
+      t,
+      _phone,
+      overrides: [devFocusProvider.overrideWithValue('<물건 id>')],
+    );
+    await t.tap(find.bySemanticsLabel('<물건 이름표>'));
+    for (var i = 0; i < 30; i++) {
+      await t.pump(const Duration(milliseconds: 16));
+    }
+    await _shoot(t, 's3-content');
+    expect(find.text('<내용 판의 주 행동 버튼 글자>'), findsOneWidget);
+  });
+
+  // S④ 빈 데이터 · 많은 데이터
+  testWidgets('S④ 빈·많음', (t) async {
+    await _pumpScreen(
+      t,
+      _phone,
+      overrides: [devStateProvider.overrideWithValue(DevState.empty)],
+    );
+    await _shoot(t, 's4a-empty');
+    expect(find.text('<빈 공간의 첫 행동 버튼 글자>'), findsOneWidget);
+
+    await t.pumpWidget(const SizedBox());
+    await _pumpScreen(
+      t,
+      _phone,
+      overrides: [devManyProvider.overrideWithValue(true)],
+    );
+    await _shoot(t, 's4b-many');
+    expect(find.text('<더 보기 글자>'), findsOneWidget); // 물건 수 상한을 넘으면 묶이고 「더 보기」
+    expect(t.takeException(), isNull);
   });
 }

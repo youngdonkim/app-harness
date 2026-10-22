@@ -58,6 +58,8 @@ String devStateLabel(DevState? state) => switch (state) {
 /// - [theme]만 — 같은 화면을 비교안 테마로 띄운다(값만 바꿔 보는 비교안). 예: `buildAppTheme(draftHomeB)`
 /// - [builder] — 비교안 화면 위젯을 바로 띄운다(lib/dev/drafts/의 화면). 라우터 없이 뜨므로 화면 안 이동은 안 된다
 /// - [path] — 라우터에 등록한 다른 경로를 띄운다
+///
+/// 머무는 공간(2-4)은 [focus]·[many]로 같은 화면의 「가까이」·「많을 때」 창을 더한다 — 창 열쇠에 붙어 그림 파일이 겹치지 않는다.
 class CanvasDraft {
   const CanvasDraft({
     required this.label,
@@ -65,6 +67,8 @@ class CanvasDraft {
     this.builder,
     this.theme,
     this.states,
+    this.focus,
+    this.many = false,
   });
 
   final String label;
@@ -74,6 +78,12 @@ class CanvasDraft {
 
   /// 띄울 상태 — 안 적으면 원래 화면과 같다.
   final List<DevState>? states;
+
+  /// 머무는 공간에서 처음부터 가까이 다가간 모습으로 그릴 물건 id — 창에 devFocusProvider로 들어간다
+  final String? focus;
+
+  /// 데이터가 많을 때 모습 — 창에 devManyProvider로 들어간다
+  final bool many;
 }
 
 /// 캔버스에 띄울 화면 하나.
@@ -231,9 +241,17 @@ class CanvasFrame {
   /// 그 화면 세로줄 안에서 몇 번째 줄인지 — 기본·상태·비교안마다 한 줄
   final int row;
 
-  /// 창 열쇠 — 영문·숫자·-·_만. 예: `S-02__main__phone__empty`
+  /// 창 열쇠 — 영문·숫자·-·_만. 예: `S-02__main__phone__empty`.
+  /// 머무는 공간 창은 판 이름 뒤에 `-focus-{물건 id}`·`-many`가 붙는다. 예: `S-03__draft-stay-focus-shelf__phone__base`
   String get key {
-    final variant = draft == null ? 'main' : 'draft-${_slug(draft!.label)}';
+    final d = draft;
+    final variant = d == null
+        ? 'main'
+        : [
+            'draft-${_slug(d.label)}',
+            if (d.focus != null) 'focus-${_slug(d.focus!)}',
+            if (d.many) 'many',
+          ].join('-');
     return '${_slug(screen.id)}__${variant}__${viewport.name}__${state?.name ?? 'base'}';
   }
 
@@ -261,11 +279,17 @@ class CanvasFrame {
         (raw != null && Uri.parse(raw).queryParameters['as'] == 'guest');
   }
 
-  /// 코멘트에 적는 주소 — 경로에 `?state=`를 붙인 것(개발용 앱에서 같은 상태로 여는 주소)
+  /// 코멘트에 적는 주소 — 경로에 `?state=`(머무는 공간이면 `?focus=`·`?state=many`)를 붙인 것(개발용 앱에서 같은 모습으로 여는 주소)
   String get url {
-    final base = draft?.path ?? screen.path ?? 'widget:${screen.id}';
-    if (state == null) return base;
-    return '$base${base.contains('?') ? '&' : '?'}state=${state!.name}';
+    var out = draft?.path ?? screen.path ?? 'widget:${screen.id}';
+    void add(String query) =>
+        out = '$out${out.contains('?') ? '&' : '?'}$query';
+    final s = state;
+    if (s != null) add('state=${s.name}');
+    if (draft?.many ?? false) add('state=many');
+    final f = draft?.focus;
+    if (f != null) add('focus=${Uri.encodeQueryComponent(f)}');
+    return out;
   }
 
   /// 창 이름 — 「보통 폰 · 빈 상태」, 비교안이면 앞에 판 이름
