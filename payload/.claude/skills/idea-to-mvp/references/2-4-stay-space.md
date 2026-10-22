@@ -262,7 +262,7 @@ AI는 공간이 좋은지 판정하지 않는다. 추천을 물으면 `intent.md
 2. 숫자 → `lib/shared/components/{수단}/{수단}_values.dart`, 물건 색 → `lib/core/design/stay/{수단}_palette.dart`의 `{수단}Palette`, 신호 자리 색 → 2층 확장 `App{수단}`(`context.{수단}`, 값은 2층 이름에서).
 3. 판 토큰 파일 `stay.dart`의 값 → 2층(필요한 것만). 그리고 `stay.dart`와 `drafts.dart`의 그 `export` 줄을 지운다.
 4. 공간이 여는 내용 판(아래에서 올라오는 판)은 본 부품으로 — 3단계가 같은 데이터의 상세 화면을 만들 때 그 판을 쓴다.
-5. 공간 화면 → 본 화면 자리(`Theme` 덮개는 지운다). 목업 캔버스 목록 `drafts`에서 공간 줄을 빼고, 가까이·많을 때 줄은 `builder`·`theme`을 지워 본 화면을 띄우는 줄로 남긴다(`CanvasDraft(label: '가까이 · {물건 이름}', focus: '{물건 id}', states: [])`).
+5. 공간 화면 → 본 화면 자리(`Theme` 덮개는 지운다). 목업 캔버스 목록 `drafts`에서 공간 줄을 빼고, 가까이·많을 때 줄은 `builder`·`theme`을 지우고 `pick: DraftPick.app`을 붙여 본 화면을 띄우는 줄로 남긴다(`CanvasDraft(label: '가까이 · {물건 이름}', focus: '{물건 id}', pick: DraftPick.app, states: [])` — 창 이름이 「지금 앱 · 가까이 · …」가 된다).
 6. 연결 정보 — `STAY_PALETTE:`(팔레트 파일)·`STAY_PARTS:`(팔레트를 불러도 되는 부품 파일), 무거운 방식이면 `HEAVY_PKGS:`·`HEAVY_PARTS:`. 모양은 `bootstrap-project.md` §4.
 7. 디자인 시스템 페이지 「머무는 공간」 영역 — 껍데기 등록을 지우고 `{수단}Palette`를 불러 물건 색 칸과 강조색 칸을 나란히, 숫자 값·캐릭터 견본을 정식 자리로(`bootstrap-project.md` §6.1).
 8. `design-check.sh --only 1,2,7,8,9,10,16,17,18,19`를 돌려 보고한다.
