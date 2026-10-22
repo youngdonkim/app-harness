@@ -233,6 +233,7 @@ AI는 `fvm flutter devices`로 폰이 보이는지 확인합니다. 폰 준비�
 1. **fvm 깔기** — `fvm --version`이 되면 건너뜁니다. 없으면 묻지 않고 공식 설치 방법으로 깝니다.
    - Homebrew가 있으면: `brew tap btwld/fvm && brew install btwld/fvm/fvm`
    - Homebrew가 없거나 위 명령이 실패하면: `curl -fsSL https://fvm.app/install.sh | bash`
+   - 공식 설치 스크립트로 깔았으면 `~/fvm/bin`에 생기고 명령 경로(PATH)에는 없습니다. 셸 설정 파일은 고치지 않으니, 이 프로젝트의 flutter·dart 명령은 `~/fvm/bin/fvm`처럼 전체 경로로 부르거나 명령 앞에 `PATH=$HOME/fvm/bin:$PATH`를 붙입니다. 이 사실을 `AGENTS.md` 「이 프로젝트가 쓰는 도구」의 fvm 줄과 이후 지시서에 한 줄로 넘깁니다. 빌드 잠금 스크립트(`build-lock.sh`)는 `fvm`이 명령 경로에 없으면 `~/fvm/bin/fvm`을 스스로 찾아 씁니다. 사람에게는 `~/.zshrc`에 `export PATH="$HOME/fvm/bin:$PATH"`를 넣으면 터미널에서도 `fvm`이 된다고 안내합니다.
    - 같은 실패가 두 번이면 멈추고 무엇이 실패했는지 보고합니다.
 2. **고를 판** — 지금의 Flutter stable 최신입니다. Flutter 공식 릴리스 목록으로 확인합니다.
 
@@ -355,7 +356,7 @@ AI는 `fvm flutter devices`로 폰이 보이는지 확인합니다. 폰 준비�
    - 서체를 지금 넣는 까닭이 하나 더 있습니다. 골든 테스트(§2.6) 안에는 폰의 기본 한글 서체가 없어서, 테마가 앱에 넣은 서체를 가리키지 않으면 한글이 네모 상자로 찍힙니다.
    - 움직임 기본 값도 1층에 자리만 잡습니다. 값은 3단계 모션 다듬기 절이 브리프 「8」로 정합니다.
 2. **2층** (`semantic.dart` — 역할 이름) — Material `ColorScheme` 이름과 우리 확장 일곱 개를 1층 상수로 채웁니다.
-3. **테마 조립과 접근 확장** (`theme.dart`·`tokens.dart`·`design.dart`) — 2층으로 `ThemeData`를 만들고, 화면이 값을 꺼내는 길을 `context.colors`·`context.space`·`context.text` 같은 이름 하나로 만듭니다. 그다음 앱 뼈대의 `lib/app/app.dart`에 `theme: buildAppTheme(AppTokens.light)`를 잇습니다(§2.3 6번).
+3. **테마 조립과 접근 확장** (`theme.dart`·`tokens.dart`·`design.dart`) — 2층으로 `ThemeData`를 만들고, 화면이 값을 꺼내는 길을 `context.colors`·`context.space`·`context.text` 같은 이름 하나로 만듭니다. 그다음 앱 뼈대의 `lib/app/app.dart`에 `theme: buildAppTheme(AppTokens.light)`를 잇습니다(§2.3 6번). `test/app/router_test.dart`의 `_testApp`에 주석으로 둔 `theme:` 줄도 함께 풉니다 — 셸이 테마를 읽기 시작해도 라우터 테스트가 깨지지 않게 하려는 것입니다.
 4. **셸** (`lib/app/shell.dart` — 모든 화면에 공통으로 씌우는 상단 바·하단 탭·바탕 틀) — `feature-list.md` 8절 「메뉴 구조」대로 만듭니다. 아직 없으면 브리프 「6. 주 사용 맥락」에 맞는 기본 메뉴로 만들고, 메인이 8절을 쓴 뒤 한 번 맞춥니다(메인이 직접 고치거나 같은 에이전트에 이어 맡깁니다). 셸은 상단·본문·하단 세 영역으로 시작하고, 안전 영역(`SafeArea` — 상태 표시줄·홈 표시줄 자리)을 셸이 맡습니다. 폰만 지원하니 화면 폭으로 메뉴를 바꾸는 갈래는 없습니다. 하단 탭이 있으면 go_router의 셸 경로가 이 셸을 감쌉니다. 탭의 경로는 아직 화면 목록이 없으니 임시 경로로 두고, 2-1 첫 화면 에이전트가 주소 모음 파일(`lib/app/paths.dart`)을 만들 때 셸이 그 파일을 쓰게 바꿉니다. 2-0이 경로를 지어 정하지 않습니다.
 5. **감싸개 부품·대비 테스트·글자 배율 도우미** — 2-1의 주요 화면에 꼭 필요한 감싸개(`AppButton`·`AppTextField` 등 — Material 부품을 감싸 variant와 누르는 크기를 정한 우리 부품)만 `lib/shared/components/ui/`에 만듭니다.
    - **누르는 영역은 브리프 「9. 접근성 바닥선」의 값(48dp 이상)을 감싸개와 테마에 처음부터 넣습니다.** 화면 코드에서 덮어써 맞추지 않습니다. 브리프 「4」의 「부품 모양」 행이 그보다 작은 크기를 적었으면 「9」가 이기고, 그 어긋남을 보고에 적습니다.

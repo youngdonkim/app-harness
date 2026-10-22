@@ -134,6 +134,12 @@ case "${1:-}" in
     exit 0 ;;
 esac
 
+# fvm을 공식 설치 스크립트로 깔면 ~/fvm/bin에 생기고 명령 경로(PATH)에는 없다 — 명령이 fvm이고 PATH에 없으면 거기서 찾아 쓴다
+if [ "${1:-}" = "fvm" ] && ! command -v fvm >/dev/null 2>&1 && [ -x "$HOME/fvm/bin/fvm" ]; then
+  shift
+  set -- "$HOME/fvm/bin/fvm" "$@"
+fi
+
 child=""
 on_signal() { # 명령을 먼저 끝내고 잠금을 푼다
   [ -n "$child" ] && kill -TERM "$child" 2>/dev/null && wait "$child" 2>/dev/null

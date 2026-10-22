@@ -80,7 +80,7 @@ MeetingRepository meetingRepository(Ref ref) =>
 | `lib/app/bootstrap.dart` | 진입점 공통 시작 순서 — 바탕 준비 → 백엔드 준비 → 앱 그리기 |
 | `lib/app/flavor.dart` | `AppFlavor`(dev·prod)와 그 값을 읽는 `appFlavorProvider` |
 | `lib/app/app.dart` | 앱 바깥 틀 — 라우터·문구 파일을 잇고, 화면을 옮길 때마다 지금 주소를 기록 |
-| `lib/app/router.dart` | `createAppRouter({initialLocation, devRoutes, devBranchRoutes})` — 화면 이동 표(go_router). 목업 캔버스도 이 함수를 부릅니다. `devRoutes`·`devBranchRoutes`는 개발용 경로 주입 자리 — 셸 밖에 더할 경로와 하단 탭 이름별로 그 탭 가지 안에 끼울 경로(2-3 비교안이 하단 탭과 함께 뜨게)입니다. 개발용 진입점(`main_dev.dart`·`main_canvas.dart`)만 넘기고 `main_prod.dart`는 넘기지 않습니다. 셸을 만들 때 가지마다 `branchRoutes`로 감쌉니다 |
+| `lib/app/router.dart` | `createAppRouter({initialLocation, devRoutes, devBranchRoutes})` — 화면 이동 표(go_router). 목업 캔버스도 이 함수를 부릅니다. `devRoutes`·`devBranchRoutes`는 개발용 경로 주입 자리 — 셸 밖에 더할 경로와 하단 탭 이름별로 그 탭 가지 안에 끼울 경로(2-3 비교안이 하단 탭과 함께 뜨게)입니다. 개발용 진입점(`main_dev.dart`·`main_canvas.dart`)만 넘기고 `main_prod.dart`는 넘기지 않습니다. 셸을 만들 때 가지마다 `...?devBranchRoutes['탭 이름']`을 경로 끝에 펼쳐 넣습니다 |
 | `lib/app/current_location.dart` | 지금 열린 화면의 주소(경로 + `?질의`) |
 | `lib/core/result/result.dart`·`app_error.dart` | `Result<T>`·`AppError` |
 | `lib/core/firebase/backend_init.dart` | 백엔드 준비 자리 — 이 묶음에서는 아무것도 하지 않습니다. 4-0에서 Firebase 판으로 바뀝니다 |
@@ -200,7 +200,7 @@ fvm dart run tool/check_analytics_events.dart
 .claude/scripts/build-lock.sh fvm flutter build ios --simulator --debug --flavor prod -t lib/main_prod.dart
 ```
 
-⑪ **화면 이동·테마를 채웁니다** — `lib/app/router.dart`의 첫 화면 자리를 실제 화면으로, `lib/app/app.dart`에 `theme: buildAppTheme(AppTokens.light)`를 디자인 시스템을 들인 뒤 잇습니다. 라우터의 내비게이터 열쇠는 함수 안에서 만듭니다(파일 맨 위 전역 값 금지 — 캔버스가 라우터를 여러 개 동시에 만듭니다).
+⑪ **화면 이동·테마를 채웁니다** — `lib/app/router.dart`의 첫 화면 자리를 실제 화면으로, `lib/app/app.dart`에 `theme: buildAppTheme(AppTokens.light)`를 디자인 시스템을 들인 뒤 잇습니다(`test/app/router_test.dart`의 `_testApp`에 주석으로 둔 `theme:` 줄도 함께 풉니다). 라우터의 내비게이터 열쇠는 함수 안에서 만듭니다(파일 맨 위 전역 값 금지 — 캔버스가 라우터를 여러 개 동시에 만듭니다).
 
 ## 4. 4-0에서 넣는 순서
 

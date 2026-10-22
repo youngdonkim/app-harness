@@ -88,7 +88,7 @@ GoRouter createAppRouter({String initialLocation = '/'}) {
   - 라우터는 셸의 각 가지(`StatefulShellBranch`)를 만들 때 `devBranchRoutes[탭 이름]`을 그 가지의 `routes` 끝에 펼쳐 넣습니다. 인자가 비면 아무 일도 안 합니다.
   - 경로 목록(`List<RouteBase>`)은 `lib/dev/drafts/dev_routes.dart` 같은 개발용 파일에 두고, `main_canvas.dart`의 `createRouter`와 `main_dev.dart`만 `createAppRouter(devBranchRoutes: …)`로 넘깁니다. **`main_prod.dart`는 이 인자를 넘기지 않습니다.**
   - 비교안을 고르거나 지울 때는 `dev_routes.dart`와 두 진입점의 넘기는 줄도 함께 지웁니다.
-  - **앱 뼈대 틀에 이 자리가 있습니다** — `.claude/templates/firebase/app/lib/app/router.dart.template`의 `createAppRouter`가 두 인자를 받고, 셸 가지를 만들 때 `branchRoutes('탭 이름', [...], devBranchRoutes)`로 감쌉니다. 개발용 진입점 `main_dev.dart` 틀에는 넘기는 줄이 주석으로 있습니다. 옛 틀로 만든 프로젝트라 라우터에 이 자리가 없으면 2-3에서는 라우터를 고치지 않습니다 — 비교안은 `CanvasDraft(builder:)`로 띄웁니다(하단 탭 없이 뜹니다).
+  - **앱 뼈대 틀에 이 자리가 있습니다** — `.claude/templates/firebase/app/lib/app/router.dart.template`의 `createAppRouter`가 두 인자를 받고, 셸 가지를 만들 때 `routes: [..., ...?devBranchRoutes['탭 이름']]`처럼 끝에 펼쳐 넣습니다. 개발용 진입점 `main_dev.dart` 틀에는 넘기는 줄이 주석으로 있습니다. 옛 틀로 만든 프로젝트라 라우터에 이 자리가 없으면 2-3에서는 라우터를 고치지 않습니다 — 비교안은 `CanvasDraft(builder:)`로 띄웁니다(하단 탭 없이 뜹니다).
 - **내비게이터 열쇠(`GlobalKey`)를 파일 맨 위 전역 값으로 두지 않습니다.** 같은 열쇠는 화면에 한 번만 있을 수 있는데, 캔버스에는 라우터가 창 수만큼 동시에 떠서 「열쇠가 겹친다」는 오류가 납니다. 셸 경로(하단 탭)의 열쇠도 같습니다.
 - 라우터가 provider(앱 어디서나 꺼내 쓰는 공급자 — Riverpod의 기본 단위)를 읽어야 하면(예: 로그인 상태로 길을 돌리기), `main_canvas.dart`의 `createRouter` 한 줄에서 받은 `container`(그 창의 provider 묶음)로 읽게 바꿉니다.
 
@@ -313,11 +313,11 @@ final meetingRepositoryProvider = Provider<MeetingRepository>(
 );
 
 Future<Result<List<Meeting>>> listMeetings() async {
-  final shortcut = await devStateAnswer(
+  final shortcut = await devStateAnswer<Result<List<Meeting>>>(
     _devState,
-    empty: () => const Result.ok(<Meeting>[]),
-    failure: (state) => Result.err(
-      state == DevState.forbidden ? const AppError.forbidden() : const AppError.network(),
+    empty: () => const Ok(<Meeting>[]),
+    failure: (state) => Err(
+      state == DevState.forbidden ? const PermissionDeniedError() : const NetworkError(),
     ),
   );
   if (shortcut != null) return shortcut;
@@ -333,6 +333,7 @@ Future<Result<List<Meeting>>> listMeetings() async {
 
 - 흐름마다 `lib/dev/fakes/fake_<흐름>_repository.dart`를 두고, 진짜 저장소와 같은 인터페이스를 구현합니다. 견본 데이터는 `lib/features/<흐름>/data/`의 견본 목록에 두고, 가짜 저장소가 그것을 가져다 씁니다. 견본 목록을 `lib/dev/`에 두면 실서비스 진입점이 `lib/dev/`를 부르게 되므로 안 됩니다(디자인 규칙 검사 13번). 위젯 테스트도 같은 가짜를 씁니다.
 - 가짜도 `devStateAnswer`를 거칩니다. 그래야 캔버스의 상태 창이 진짜 저장소와 같은 길로 그려집니다.
+- 시간이 걸리는 흉내(진행 상황을 흘려 주는 `Stream` 등)는 `async*` 안 `Future.delayed`로 짓지 않습니다 — 화면이 닫혀도 타이머가 남아 위젯 테스트·골든이 「A Timer is still pending」으로 실패합니다. `Timer`와 `StreamController(onCancel: () => timer?.cancel())`로 짓습니다.
 - `lib/dev/fakes/canvas_overrides.dart`의 `canvasFakeOverrides`에 한 줄씩 등록합니다.
 
   ```dart

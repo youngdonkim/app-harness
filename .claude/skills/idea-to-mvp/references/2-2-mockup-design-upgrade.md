@@ -189,7 +189,7 @@ AI는 화면을 볼 수 없다 — 어느 판이 낫다고 대신 판정하지 �
 
 - **화면 밖 검사** — 메인이 코드 생성·`fvm flutter analyze`·`fvm dart analyze`(Riverpod 린트는 이쪽에서만 돈다)·`fvm flutter test --exclude-tags golden`·개발용 앱 빌드를 돌리고, 본 코드가 비교안을 불러오는 곳 0건(§2.4 grep)을 확인한다. 디자인 규칙 검사(`bash .claude/scripts/design-check.sh --only 1,2,7,10,11,16`)도 한 번 돌린다.
 - **골든 그림 다시 찍기** — 토큰이 바뀌어 거의 모든 창의 그림이 달라진다. `.claude/scripts/build-lock.sh fvm flutter test --tags golden --update-goldens test/goldens/canvas_golden_test.dart`로 다시 찍고 캔버스를 `R`로 다시 시작한다. 그림이 맞는지는 사람이 본다.
-- **화면 문구 검토 한 번** (`visual-polish.md` H 문구) — 메인이 바뀐 화면 코드와 문구 파일(`.arb`) 경로를 `ux-writing-reviewer` 에이전트에 넘겨 바로 고치게 한다.
+- **화면 문구 검토 한 번** (`visual-polish.md` H 문구) — 메인이 바뀐 화면 코드와 문구 파일(`.arb`) 경로를 `ux-writing-reviewer` 에이전트에 넘겨 바로 고치게 한다. 끝나면 메인이 `fvm flutter gen-l10n`을 돌리고, 보고의 「고친 문구 목록」대로 위젯 테스트의 글자와 `feature-list.md` 상태 표·화면 목록의 같은 문구를 맞춘다.
 
 코드 정리는 여기서 하지 않는다 — 3단계 끝에 한 번이다(SKILL.md 「2·3단계는 한 브랜치로 간다」).
 
