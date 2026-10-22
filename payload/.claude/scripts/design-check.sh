@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# design-check.sh — 「디자인 규칙 검사」(Flutter/Dart 코드 기준) 18개를 한 번에 돌린다.
+# design-check.sh — 「디자인 규칙 검사」(Flutter/Dart 코드 기준) 19개를 한 번에 돌린다.
 #
 # 규칙 정본: .claude/skills/design-system/SKILL.md 「디자인 규칙 검사가 잡는 것」 표 (번호가 같다).
 #   판정 기준·예외 처리는 idea-to-mvp 3단계 문서의 배포 전 검사 ①을 본다.
 #   이 스크립트는 명령만 실행하고 판정은 하지 않는다. 늘 exit 0 이다.
 #
 # 쓰는 법 (프로젝트 최상위 폴더에서):
-#   bash .claude/scripts/design-check.sh                          # 18개 전부 (11번은 --allowed 없으면 건너뜀)
+#   bash .claude/scripts/design-check.sh                          # 19개 전부 (11번은 --allowed 없으면 건너뜀)
 #   bash .claude/scripts/design-check.sh --only 1,2,7,12          # 골라서
 #   bash .claude/scripts/design-check.sh --allowed "xs sm md lg"  # 11번 「화면 규칙」 허용 space 이름
 #
@@ -25,8 +25,11 @@
 #   BRAND_PARTS="lib/shared/components/common/brand_band.dart …"   (17번: 주면 AGENTS_MD 대신 이 목록을 쓴다)
 #   HEAVY_PKGS="flutter_scene"             (18번: 무거운 패키지 이름. 주면 AGENTS_MD 의 `HEAVY_PKGS:` 줄 대신 쓴다. 대상은 LIB_DIR 아래에서 lib/dev 를 뺀 곳)
 #   HEAVY_PARTS="lib/shared/components/map/map_view.dart …"   (18번: 그 패키지를 import 해도 되는 파일. 주면 AGENTS_MD 의 `HEAVY_PARTS:` 줄 대신 쓴다)
+#   STAY_PALETTE="lib/core/design/stay/scene_palette.dart"   (19번: 머무는 공간 팔레트 파일. 주면 AGENTS_MD 의 `STAY_PALETTE:` 줄 대신 쓴다.
+#       둘 다 없으면 DESIGN_DIR/stay/*_palette.dart 를 찾는다. 대상은 LIB_DIR 아래에서 lib/dev 와 DESIGN_DIR 를 뺀 곳)
+#   STAY_PARTS="lib/shared/components/scene/room/room_view.dart …"   (19번: 팔레트를 import 해도 되는 공간 부품 파일. 주면 AGENTS_MD 의 `STAY_PARTS:` 줄 대신 쓴다)
 #
-# 17·18번은 대상이 아직 없으면 「해당 없음」으로 따로 적는다 — 통과와 다르다.
+# 17·18·19번은 대상이 아직 없으면 「해당 없음」으로 따로 적는다 — 통과와 다르다.
 # 제외: 생성 파일(*.g.dart, *.freezed.dart), 주석 줄(// 로 시작). 못 잡는 것(여러 줄에 걸친 EdgeInsets 등)은
 #   SKILL.md 「grep으로 못 잡는 것」과 사람 확인 몫이다.
 # bash 3.2(macOS 기본)에서 돌고, BSD grep/sed 로 돈다. 12·6-가·13·16 은 perl(macOS 기본 포함)을 쓴다.
@@ -413,6 +416,69 @@ c18() {
   done < "$T/heavy-files.txt"
 }
 
+# 19번 — 머무는 공간 팔레트(물건 제 색)가 공간 밖 화면으로 번지지 않았는가.
+# 세 갈래를 가른다:
+#   ① STAY_PALETTE 줄도 없고 DESIGN_DIR/stay/*_palette.dart 도 없음 → 「해당 없음」 (걸린 줄로 세지 않는다)
+#   ② 팔레트 파일은 있는데 STAY_PALETTE 줄이나 STAY_PARTS 줄이 없음 → 「목록 줄 없음」 (걸린 줄)
+#   ③ 두 줄이 다 있음 → 팔레트를 import 하는 파일 중 목록 밖만 찍는다. 목록에 있는데 파일이 없으면 (참고)로 알린다
+# 팔레트는 이름(디렉터리/파일 이름 끝)으로 찾는다 — package: import 와 상대 경로 import 를 함께 잡는다.
+# DESIGN_DIR 안 모음 파일(design.dart 등)이 팔레트를 export 하면 모든 화면이 팔레트를 받게 되니 그것도 찍는다.
+c19() {
+  local pal="${STAY_PALETTE:-}" list="${STAY_PARTS:-}" havepal=0 haveparts=0
+  [ -n "$pal" ] && havepal=1
+  [ -n "$list" ] && haveparts=1
+  if [ -e "$AGENTS_MD" ]; then
+    if [ -z "$pal" ]; then
+      pal=$(g -m1 -E '^[[:space:]]*(-[[:space:]]+)?`?STAY_PALETTE:' "$AGENTS_MD" | sed -E 's/.*STAY_PALETTE:[[:space:]]*//' | tr -d '`')
+      [ -n "$pal" ] && havepal=1
+    fi
+    if [ -z "$list" ]; then
+      list=$(g -m1 -E '^[[:space:]]*(-[[:space:]]+)?`?STAY_PARTS:' "$AGENTS_MD" | sed -E 's/.*STAY_PARTS:[[:space:]]*//' | tr -d '`')
+      g -qE '^[[:space:]]*(-[[:space:]]+)?`?STAY_PARTS:' "$AGENTS_MD" && haveparts=1
+    fi
+  fi
+  local pals=() f
+  if [ -n "$pal" ]; then
+    read -r -a pals <<< "$pal"
+  elif [ -d "${DESIGN_DIR%/}/stay" ]; then
+    for f in "${DESIGN_DIR%/}"/stay/*_palette.dart; do [ -e "$f" ] && pals+=("$f"); done
+  fi
+  if [ ${#pals[@]} -eq 0 ]; then
+    echo "  (참고) 해당 없음 — 머무는 공간 팔레트를 아직 들이지 않았다(연결 정보에 STAY_PALETTE 줄이 없고 ${DESIGN_DIR%/}/stay/*_palette.dart 도 없음)"
+    NA_LIST="$NA_LIST 19"
+    return
+  fi
+  [ "$havepal" = 0 ] && echo "목록 줄 없음: 팔레트 파일(${pals[*]})이 있는데 $AGENTS_MD 연결 정보에 STAY_PALETTE: 줄이 없다 — 줄을 빠뜨린 것"
+  [ "$haveparts" = 0 ] && echo "목록 줄 없음: 팔레트가 있는데 $AGENTS_MD 연결 정보에 STAY_PARTS: 줄이 없다 — 줄을 빠뜨린 것"
+  local parts=() p ok key alt=""
+  [ -n "$list" ] && read -r -a parts <<< "$list"
+  if [ ${#parts[@]} -gt 0 ]; then
+    for p in "${parts[@]}"; do [ -e "$p" ] || echo "  (참고) 목록에 있는데 파일이 없음: $p"; done
+  fi
+  for p in "${pals[@]}"; do
+    [ -e "$p" ] || echo "  (참고) STAY_PALETTE 에 적었는데 파일이 없음: $p"
+    key="$(basename "$(dirname "$p")")/$(basename "$p")"
+    key=$(printf '%s' "$key" | sed -E 's/[.]/[.]/g')
+    alt="${alt:+$alt|}$key"
+  done
+  [ -e "$LIB_DIR" ] || { echo "경로 없음: $LIB_DIR"; return; }
+  if [ -d "$DESIGN_DIR" ]; then
+    ga "^[[:space:]]*export[[:space:]]+['\"][^'\"]*($alt)['\"]" "$DESIGN_DIR" | while IFS= read -r f; do
+      echo "모음 파일이 팔레트를 내보냄(공간 밖으로 번짐): $f"
+    done
+  fi
+  ga "^[[:space:]]*import[[:space:]]+['\"][^'\"]*($alt)['\"]" "$LIB_DIR" | cut -d: -f1 | sort -u \
+    | g -v "^${LIB_DIR%/}/dev/" | g -v "^${DESIGN_DIR%/}/" > "$T/stay-files.txt"
+  [ -s "$T/stay-files.txt" ] || return
+  while read -r f; do
+    ok=0
+    if [ ${#parts[@]} -gt 0 ]; then
+      for p in "${parts[@]}"; do [ "$f" = "$p" ] && ok=1; done
+    fi
+    [ "$ok" = 1 ] || echo "공간 부품 목록 밖: $f"
+  done < "$T/stay-files.txt"
+}
+
 # ---------- 실행 ----------
 HIT_LIST=""
 VAL_LIST=""
@@ -454,6 +520,7 @@ run 15 "앱 글자 배율을 막는 코드" c15 h
 run 16 "화면에 직접 쓴 Text('…') 문구" c16 h
 run 17 "브랜드 색 면 자리 부품 밖 사용" c17 h
 run 18 "무거운 패키지 자리 부품 밖 import" c18 h
+run 19 "머무는 공간 팔레트 자리 부품 밖 import" c19 h
 
 echo
 echo "걸린 검사:${HIT_LIST:- 없음} / 기준 확인이 필요한 검사: 5(걸린 곳마다 한글 조합 가드 사람 확인), 8(1 이상이어야 통과), 10(1개가 아닌 화면은 주 행동 칸과 맞대 판정) —${VAL_LIST:- 해당 없음}"
