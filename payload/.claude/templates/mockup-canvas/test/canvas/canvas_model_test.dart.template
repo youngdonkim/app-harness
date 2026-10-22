@@ -46,6 +46,37 @@ void main() {
     expect(drafts.first.location, '/meetings');
   });
 
+  test('머무는 공간의 가까이·많을 때 창은 열쇠가 겹치지 않는다', () {
+    final screens = mergeScreens(
+      [list],
+      {
+        'S-01': const CanvasOverride(
+          drafts: [
+            CanvasDraft(label: '머무는 공간 (stay)', states: []),
+            CanvasDraft(label: '가까이 · 책장 (stay)', focus: 'shelf', states: []),
+            CanvasDraft(label: '가까이 · 화분 (stay)', focus: 'pot', states: []),
+            CanvasDraft(label: '많을 때 (stay)', many: true, states: []),
+          ],
+        ),
+      },
+      const [],
+    );
+    final keys = buildFrames(screens)
+        .where((f) => f.draft != null && f.viewport == CanvasViewport.phone)
+        .map((f) => f.key)
+        .toList();
+    expect(keys, [
+      'S-01__draft-stay__phone__base',
+      'S-01__draft-stay-focus-shelf__phone__base',
+      'S-01__draft-stay-focus-pot__phone__base',
+      'S-01__draft-stay-many__phone__base',
+    ]);
+    final near = buildFrames(screens).firstWhere((f) => f.draft?.focus == 'pot');
+    expect(near.url, '/meetings?focus=pot');
+    final many = buildFrames(screens).firstWhere((f) => f.draft?.many ?? false);
+    expect(many.url, '/meetings?state=many');
+  });
+
   test('덮어쓰기는 적은 필드만 바꾸고, skip이면 뺀다', () {
     final screens = mergeScreens(
       [

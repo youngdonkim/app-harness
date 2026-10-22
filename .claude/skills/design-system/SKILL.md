@@ -108,6 +108,8 @@ git branch --show-current
 - **사진 톤(`context.brand.photoTone`)은 색 면이 아니다** — 사진을 고치지 않고 밝기·채도·따뜻함만 보정하는 값 묶음이고, 씌우는 일은 공통 부품 하나가 맡는다. 위 자리 목록과 상관없다.
 - 자리 목록을 더하거나 빼는 결정과 그 이유는 프로젝트가 기록한다 — idea-to-mvp 프로젝트는 `mvp/design-brief.md` 「13. 개성」이 정본이다.
 
+**머무는 공간 안 색** — 사용자가 들어가 둘러보는 공간(idea-to-mvp 2-4)의 그림 층 안에서는 물건이 제 색을 쓴다(나무는 나무색, 화분은 초록). 브랜드 2층 이름만 쓰면 공간이 한 계열로 칙칙해지기 때문이다. 대신 둘을 지킨다. ① 물건 색은 공간 팔레트 한 곳에만 둔다 — 비교안 동안은 판 토큰 파일 `lib/core/design/drafts/stay.dart` 안 `Stay{수단}Palette`, 정한 뒤는 `lib/core/design/stay/{수단}_palette.dart`의 `{수단}Palette`(이름 붙은 `Color` 상수, 16개 안팎). 둘 다 `lib/core/design/` 안이라 검사 1번 대상 밖이다. 공간 부품(연결 정보 `STAY_PARTS:`)만 그 파일을 `import`한다 — 제 색이 공간 밖 화면으로 번지지 않게(검사 19번). ② 신호 자리(지금 고른 물건·오늘·주 행동)는 그대로 2층 이름(`context.colors.primary` 등, 수단 안이면 2층 확장 `App{수단}`)이고, 팔레트에 강조색과 헷갈리는 색을 두지 않는다. 공간 밖(그림 층 위 글 층·내용 판·버튼)은 이 문서의 규칙 그대로다. 점검 항목은 [visual-polish.md](references/visual-polish.md) J 묶음.
+
 ## 결정 트리
 
 **새 화면이 필요하다** (frame-first — 콘텐츠부터 쓰지 말 것)
@@ -192,7 +194,7 @@ git branch --show-current
 
 ## 디자인 규칙 검사가 잡는 것
 
-`.claude/scripts/design-check.sh`가 아래 18개 규칙을 grep으로 찍는다. 스크립트는 명령만 돌리고 늘 0으로 끝나며, 걸린 줄의 판정은 메인과 사람이 한다(판정 기준·예외 처리의 정본은 idea-to-mvp 3단계 문서의 배포 전 검사 ①). 검사 대상은 `lib/features/`·`lib/shared/components/`(감싸개 폴더 `ui/`는 대부분 뺀다)·`lib/app/`(셸 포함)·`lib/dev/drafts/`·`lib/dev/design_system/`이고, `lib/core/design/`은 빠진다.
+`.claude/scripts/design-check.sh`가 아래 19개 규칙을 grep으로 찍는다. 스크립트는 명령만 돌리고 늘 0으로 끝나며, 걸린 줄의 판정은 메인과 사람이 한다(판정 기준·예외 처리의 정본은 idea-to-mvp 3단계 문서의 배포 전 검사 ①). 검사 대상은 `lib/features/`·`lib/shared/components/`(감싸개 폴더 `ui/`는 대부분 뺀다)·`lib/app/`(셸 포함)·`lib/dev/drafts/`·`lib/dev/design_system/`이고, `lib/core/design/`은 빠진다.
 
 | # | 검사 | 지키는 규칙 |
 |---|---|---|
@@ -214,6 +216,7 @@ git branch --show-current
 | 16 | 화면·부품에 글자를 직접 쓴 `Text('…')`·`Text("…")` 0건 (`lib/features`·`lib/shared/components`·`lib/app`, `ui/`·`lib/dev` 제외) — 문구는 `.arb`에서 꺼낸다 | 철칙 7 |
 | 17 | 브랜드 색 면(`context.brand.surface`·`context.brand.onSurface`)을 쓴 파일이 AGENTS.md 연결 정보의 `BRAND_PARTS:` 목록 밖에 0건 (`lib/features`·`lib/shared/components`·`lib/app`, `lib/dev` 제외). 브랜드 색을 아직 안 들였으면(`AppTokens.light`의 `brand`가 `AppBrand.none`) 「해당 없음」으로 따로 적는다 — 통과와 다르다. 들였는데 목록 줄이 없으면 걸린 줄로 센다 | 「브랜드 색은 어디에 쓰나」 |
 | 18 | AGENTS.md 연결 정보의 `HEAVY_PKGS:` 패키지(3D·지도 등 무거운 것)를 `import 'package:…/…'`로 부르는 파일이 `HEAVY_PARTS:` 목록 밖에 0건 (`lib/`에서 `lib/dev/` 제외). `HEAVY_PKGS:` 줄이 없으면 「해당 없음」으로 따로 적는다 — 통과와 다르다. `HEAVY_PKGS:`는 있는데 `HEAVY_PARTS:`가 없으면 「목록 줄 없음」으로 걸린 줄로 센다. 목록에 있는데 파일이 없으면 참고로 적는다 | 안티패턴 표, [visual-polish.md](references/visual-polish.md) I8 |
+| 19 | AGENTS.md 연결 정보의 `STAY_PALETTE:` 공간 팔레트 파일(머무는 공간의 물건 제 색)을 `import`하는 파일이 `STAY_PARTS:` 목록 밖에 0건 (`lib/`에서 `lib/dev/`와 `lib/core/design/` 제외). `STAY_PALETTE:` 줄이 없고 `lib/core/design/stay/*_palette.dart`도 없으면 「해당 없음」으로 따로 적는다 — 통과와 다르다 | 위 「머무는 공간 안 색」 |
 
 grep으로 못 잡는 것 — 토큰을 맞는 자리에 썼는가(본문에 캡션 전용 글자 토큰을 씀 같은 것), 강조색을 장식에 썼는가(`context.colors.primary`를 아이콘에 칠함), 큰 글자에서 보기 좋은가 — 는 adapter의 적용 규칙 요약을 아는 쓰는 쪽과 사람의 눈이 맡는다. 오탐·누락이 두 번 이상 문제가 되면 Dart 분석기 플러그인(우리 규칙을 `flutter analyze` 안에 넣는 장치)으로 옮긴다.
 
@@ -230,5 +233,6 @@ grep으로 못 잡는 것 — 토큰을 맞는 자리에 썼는가(본문에 캡
 - **화면 생김새를 개선할 때** — [visual-polish.md](references/visual-polish.md) (위계·글자·간격·색·부품·작은 폰으로 옮기기 점검 항목과 지시 문장 예 · 규칙을 디자인 시스템 페이지에 먼저 올리고 비교안을 만들게 한다)
 - **「[서비스 이름] 디자인 시스템」 페이지를 만들거나 고칠 때, 비교안 값을 지금 값과 나란히 보일 때** — [bootstrap-project.md](references/bootstrap-project.md) §6 (보여 주는 것 · 값은 실제 테마에서 읽어서 · 정본이 아니라 거울 · 비교안만 감싸는 `Theme` 덮개)
 - **개성(그림 소재·브랜드 색 면·제목 서체·로고·사진 톤·대표 장면)을 입힐 때** — [visual-polish.md](references/visual-polish.md) I 개성 묶음과 위 「브랜드 색은 어디에 쓰나」
+- **사용자가 들어가 둘러보는 공간(머무는 공간)을 만들 때** — [visual-polish.md](references/visual-polish.md) J 머무는 공간 묶음과 위 「머무는 공간 안 색」
 - **서체를 새로 넣거나 바꿀 때** — [font-loading.md](references/font-loading.md) (앱에 서체 파일 넣기·`pubspec.yaml` 등록·가변 서체·한글 서체 용량·`google_fonts`를 쓰지 않는 이유·확인 관문)
 - **새 프로젝트에 도입할 때** — [bootstrap-project.md](references/bootstrap-project.md)를 순서대로 따른다. 이 절차는 도중에 세 문서를 함께 읽는다: 토큰 3층 단계에서 font-loading.md(서체 선정·넣는 방식을 같이 정한다 — 미루면 foundation을 다시 갈아엎는다), 인벤토리 생성에서 component-taxonomy.md §6(인벤토리 한 줄 형식), 프레임 정의에서 layout-frames.md §2·§4(하단 고정 요소·작은 폰 예산)

@@ -155,7 +155,7 @@ git clone https://github.com/youngdonkim/app-harness.git ~/dev/app-harness
 
 | 종류 | 이름 | 역할 |
 |---|---|---|
-| 단계 스킬 | `idea-to-mvp` | 6단계: Intent(인터뷰) · Mockup(2-0 개발환경 · 2-1 목업 · 2-2 디자인 개선 · 2-3 개성 입히기 — 대담·혁신·파격 세 판 중 고르기) · FrontendBuild(플레이 내부 테스트까지) · BackendBuild(4-0~4-3 — Firebase·로그인·계측) · MarketResearch · MvpLaunch(통과 기준). 2단계부터 실제 앱과 같은 Flutter 코드로 화면을 만들어 목업 캔버스(만든 화면을 폰 두 크기로 나란히 펼쳐 아이패드 시뮬레이터에 띄우는 개발용 앱)에서 보고, 그 코드를 끝까지 이어 짓습니다 |
+| 단계 스킬 | `idea-to-mvp` | 6단계: Intent(인터뷰) · Mockup(2-0 개발환경 · 2-1 목업 · 2-2 디자인 개선 · 2-3 개성 입히기 — 대담·혁신·파격 세 판 중 고르기 · 2-4 머무는 공간(선택) — 사용자가 들어가 둘러보는 화면 하나를 따로 깊게) · FrontendBuild(플레이 내부 테스트까지) · BackendBuild(4-0~4-3 — Firebase·로그인·계측) · MarketResearch · MvpLaunch(통과 기준). 2단계부터 실제 앱과 같은 Flutter 코드로 화면을 만들어 목업 캔버스(만든 화면을 폰 두 크기로 나란히 펼쳐 아이패드 시뮬레이터에 띄우는 개발용 앱)에서 보고, 그 코드를 끝까지 이어 짓습니다 |
 | 출시 스킬 | `backend-release` | main의 보안 규칙·색인·서버 함수·Hosting 웹 페이지·Remote Config를 실서비스 Firebase에 배포. 맨 앞에서 「실서비스 배포 전 확인」을 돌립니다 |
 | 출시 스킬 | `store-release` | main의 커밋으로 실서비스 앱 번들(AAB — 구글이 기기마다 알맞게 쪼개 주는 묶음 파일)을 만들어 구글 플레이 트랙에 올림 — 빌드 번호 올리기·업로드 키 연결·서명 확인·태그 |
 | 공통 스킬 | `project-init` | 프로젝트에 하네스 적용 — `payload/`를 프로젝트 루트에 복사 + 훅 등록 설정 병합 + AGENTS.md 뼈대 생성. 이미 적용된 프로젝트에서 재실행하면 최신 원본과 비교해 동기화 |
