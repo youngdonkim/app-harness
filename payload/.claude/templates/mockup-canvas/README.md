@@ -56,7 +56,7 @@
 | `test/canvas/canvas_board_test.dart.template` | `test/canvas/canvas_board_test.dart` — 캔버스 위젯 테스트(창마다 상태가 갈리는지, 대화상자가 창 안에 뜨는지, 코멘트가 남는지) |
 | `test/canvas/canvas_list_test.dart.template` | `test/canvas/canvas_list_test.dart` — 목록 만들기·상태 칸 채우기 단위 테스트(견본 문서를 글자로 넣어 읽음) |
 | `test/goldens/canvas_golden_test.dart.template` | `test/goldens/canvas_golden_test.dart` — 미리보기 그림을 찍는 골든 테스트(§9) |
-| `test/draft_checks/draft_check_test.dart.template` | `test/draft_checks/<판>_check_test.dart` — 2-3 비교안 자기 점검 테스트 틀. 판마다 파일 하나로 복사해 씁니다(§9의 「자기 점검 그림」) |
+| `test/draft_checks/draft_check_test.dart.template` | `test/draft_checks/<판>_check_test.dart` — 2-3 비교안·2-4 머무는 공간 자기 점검 테스트 틀. 판마다 파일 하나로 복사해 씁니다(`stay`면 `stay_check_test.dart` — §9의 「자기 점검 그림」) |
 | `dart_test.yaml.template` | `dart_test.yaml`(프로젝트 맨 위) — 테스트 태그 `golden`을 등록합니다. 이미 있으면 `tags:` 아래에 `golden:` 한 줄만 더합니다 |
 
 새로 까는 패키지는 하나입니다 — 골든 테스트 도우미 `golden_screenshot`(개발 의존성). 테스트 안에서 앱 서체를 불러와 글자가 네모 상자로 찍히지 않게 하고, 1% 안의 작은 그림 차이를 같은 그림으로 쳐 줍니다. 스토어 스크린샷을 만드는 기능도 있어 6단계 스크린샷 초안에도 씁니다. 그 밖에 캔버스는 고정 스택의 `flutter_riverpod`(상태 관리)·`go_router`(화면 이동)만 쓰고, 스크립트와 코멘트 서버는 Dart 기본 라이브러리만 씁니다.
@@ -261,8 +261,27 @@ final canvasExtraScreens = <CanvasScreen>[
 | `drafts` | 비교안. 원래 화면 아래에 판마다 줄을 짓습니다. `theme`만 주면 같은 화면을 비교안 테마로(design-system 스킬 `bootstrap-project.md` §6.3의 `drafts.dart` 값), `builder`를 주면 `lib/dev/drafts/`의 비교안 화면을, `path`를 주면 다른 경로를 띄웁니다. `states`를 안 적으면 원래 화면과 같은 상태를 띄웁니다 |
 | `skip` | 캔버스에서 뺍니다 |
 
+`CanvasDraft`에는 머무는 공간(idea-to-mvp 2-4)용 필드가 둘 더 있습니다.
+
+| `CanvasDraft` 필드 | 뜻 |
+|---|---|
+| `focus` | 물건 id. 그 창에 `devFocusProvider`가 이 값으로 들어가, 공간 부품이 처음부터 그 물건으로 다가간 「가까이」 모습을 그립니다 |
+| `many` | `true`면 그 창에 `devManyProvider`가 참으로 들어가, 저장·조회 코드가 예시 데이터를 늘려 「많을 때」 모습을 그립니다 |
+
 - **덮어쓰기는 적은 필드만 바꿉니다.** 안 적은 필드는 자동 값 그대로입니다. `states`를 적으면 자동 상태 목록을 통째로 바꿉니다.
 - **고른 뒤** — 비교안 중 하나를 고르면 그 값이나 화면을 본 화면 자리로 옮기고, `drafts`에서 그 판을 지웁니다. 고르지 않은 판은 비교안 화면을 지울 때 같이 지웁니다.
+- **머무는 공간의 가까이·많을 때 창** — 2-4는 공간 화면의 `drafts`에 넷을 둡니다. 공간(`states: [DevState.empty]`), 가까이 둘(`focus:`, `states: []`), 많을 때(`many: true`, `states: []`). 라벨에는 모두 영문 꼬리 `(stay)`를 붙입니다.
+
+  ```dart
+  'S-03': CanvasOverride(drafts: [
+    CanvasDraft(label: '머무는 공간 (stay)', builder: (_) => const HomeStay(), theme: draftStayTheme(), states: [DevState.empty]),
+    CanvasDraft(label: '가까이 · 책장 (stay)', builder: (_) => const HomeStay(), theme: draftStayTheme(), focus: 'shelf', states: []),
+    CanvasDraft(label: '가까이 · 화분 (stay)', builder: (_) => const HomeStay(), theme: draftStayTheme(), focus: 'pot', states: []),
+    CanvasDraft(label: '많을 때 (stay)', builder: (_) => const HomeStay(), theme: draftStayTheme(), many: true, states: []),
+  ]),
+  ```
+
+  창 열쇠는 판 부분 뒤에 `-focus-{물건 id}`·`-many`가 붙어 `S-03__draft-stay__…`·`S-03__draft-stay-focus-shelf__…`·`S-03__draft-stay-many__…`가 됩니다 — 라벨의 한글이 빠져도 그림 파일이 서로 덮이지 않습니다. 그래서 물건 id는 영문·숫자로 짓습니다. 셸 안 화면이면 `builder` 대신 개발용 경로를 `path`로 줍니다(2-3과 같음). 공간을 쓰기로 정한 뒤에는 공간 줄을 지우고, 가까이·많을 때 줄은 `builder`·`theme`을 지워 본 화면을 띄우는 줄로 남깁니다.
 - 캔버스는 목록을 창 목록(화면 × 폰 크기 × 상태 × 판)으로 펴서 씁니다(`canvas_model.dart`의 `buildFrames`). 창마다 열쇠가 붙습니다 — 예: `S-02__main__phone__empty`, 비교안이면 `S-02__draft-B__small__base`. 영문·숫자·`-`·`_`만 쓰므로 판 이름의 한글은 열쇠에서 빠집니다. 그래서 한글만 다른 판 이름은 열쇠가 겹칩니다. 2-3 비교안 라벨은 영문 꼬리를 붙여 `'대담판 (bold)'`·`'혁신판 (innov)'`·`'파격판 (leap)'`로 씁니다 — 열쇠는 `S-02__draft-bold__phone__base`·`…__draft-innov__…`·`…__draft-leap__…`가 되고, 이 `draft-bold` 같은 말이 창 열쇠의 판 부분입니다(골든 그림 이름·코멘트·`--name` 모두 이 열쇠).
 
 ## 6. 상태 흉내와 가짜 저장소
@@ -273,6 +292,8 @@ final canvasExtraScreens = <CanvasScreen>[
 |---|---|---|
 | `devStateProvider` | `DevState.empty`·`loading`·`error`·`forbidden` | `null` |
 | `devGuestProvider` | 「로그인 전」이면 `true` | `false` |
+| `devFocusProvider` | 머무는 공간(2-4)에서 처음부터 가까이 다가가 그릴 물건 id | `null` |
+| `devManyProvider` | 「데이터가 많을 때」 흉내면 `true` | `false` |
 
 **화면 코드는 이 값을 읽지 않습니다.** 저장·조회 코드(각 흐름의 `data/` 폴더)가 함수 맨 앞에서 `devStateAnswer`를 불러, 값이 있으면 그 상태의 답을 바로 돌려줍니다 — 빈 상태는 빈 결과, 로딩은 끝나지 않는 응답, 오류·권한없음은 실패 값. 화면은 실제 처리 경로대로 그 답을 그리므로, 상태 화면이 실제 앱과 같은 코드로 그려집니다.
 
@@ -295,6 +316,7 @@ Future<Result<List<Meeting>>> listMeetings() async {
 ```
 
 - 지금 로그인한 사람을 읽는 코드는 `devGuestProvider`를 먼저 보고, 참이면 「로그인 전」으로 답합니다.
+- `devFocusProvider`는 저장·조회 코드가 아니라 **공간 부품만** 읽습니다. `devManyProvider`는 저장·조회 코드가 `devStateAnswer` 옆에서 읽어, 참이면 예시 데이터를 여러 벌로 늘려 돌려줍니다(저장하지 않음). 개발용 앱에서는 질의 `?focus={물건 id}`·`?state=many`로 켭니다. `many`는 화면 목록 상태 표의 상태가 아니라서 `DevState`에 넣지 않았습니다.
 - **값을 넣는 길은 둘입니다.** 목업 캔버스는 창마다 provider 덮어쓰기로 넣습니다(`canvas_phone.dart`). 개발용 앱(`main_dev.dart`)은 라우터가 경로 뒤 질의 `?state=empty`·`?as=guest`를 읽어 넣습니다 — 그래서 화면 목록·상태 표의 `?state=` 표기가 개발용 앱에서도 그대로 통합니다. 실서비스 진입점은 아무것도 넣지 않으므로 늘 `null`·`false`입니다.
 
 **가짜 저장소** — 캔버스는 Firebase에 붙지 않습니다. 저장·조회 provider를 모두 견본 데이터를 돌려주는 가짜로 덮어씁니다.
@@ -409,7 +431,7 @@ AI가 화면이 맞는지 판정하는 수단이 아닙니다. 그림이 맞는�
 .claude/scripts/build-lock.sh flutter test --tags golden --update-goldens --name 'S-01__main__' test/goldens/canvas_golden_test.dart     # 고른 뒤 본 화면
 ```
 
-**자기 점검 그림은 `test/goldens/`에 두지 않습니다** — 2-3에서 판을 만드는 에이전트가 위젯 테스트로 찍는 그림은 비교 기준이 아니라 본인이 눈으로 확인하는 기록이라서 `.draft-checks/<판>/<판>-<회차>-<묶음>.png`(프로젝트 맨 위 폴더, git에 올리지 않음)에 씁니다. 회차는 틀 맨 위 `_round` 값입니다. 틀은 `test/draft_checks/draft_check_test.dart.template`이고, 실행은 파일 하나만 지정하고 시간 상한을 겁니다.
+**자기 점검 그림은 `test/goldens/`에 두지 않습니다** — 2-3에서 판을 만드는 에이전트와 2-4에서 머무는 공간을 만드는 에이전트가 위젯 테스트로 찍는 그림은 비교 기준이 아니라 본인이 눈으로 확인하는 기록이라서 `.draft-checks/<판>/<판>-<회차>-<묶음>.png`(프로젝트 맨 위 폴더, git에 올리지 않음)에 씁니다. 회차는 틀 맨 위 `_round` 값입니다. 틀은 `test/draft_checks/draft_check_test.dart.template`이고, 실행은 파일 하나만 지정하고 시간 상한을 겁니다.
 
 ```bash
 fvm flutter test --timeout 2m test/draft_checks/bold_check_test.dart   # fvm을 안 쓰면 앞의 fvm을 뗍니다
