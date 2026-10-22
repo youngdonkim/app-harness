@@ -140,7 +140,7 @@ fvm dart run tool/canvas_list.dart
 
 만드는 일은 **서브 에이전트에 위임합니다** — 화면이 많으면 출력이 크고, 메인이 직접 하면 뒤따르는 대조(§2.3)와 검수에 써야 할 맥락이 그 출력으로 덮입니다. 화면이 많으면 §2.2.1대로 공통 부품을 먼저 만든 뒤 묶음으로 나눠 여러 에이전트에 맡깁니다.
 
-**모델은 sonnet입니다** — 공통 부품·남은 화면·상태 화면 모두. 생김새와 짓는 규칙은 2단계가 이미 정했고, 이 단계는 정해진 부품과 화면을 따라 만드는 일이라서입니다. 처음 정하는 일은 opus, 따라 하는 일은 sonnet이 하네스의 기본 원칙입니다(SKILL.md §3.2).
+**모델은 sonnet입니다** — 공통 부품·남은 화면·상태 화면 모두. 생김새와 짓는 규칙은 2단계가 이미 정했고, 이 단계는 정해진 부품과 화면을 따라 만드는 일이라서입니다. 처음 정하는 일은 opus, 따라 하는 일은 sonnet이 하네스의 기본 원칙입니다(SKILL.md §3.3).
 
 1. **시작 전 확인 (메인)** — `feature-list.md`의 빠짐 점검(10절)이 비어 있거나 X가 근거 없이 남아 있으면 만들지 말고 2-1로 돌아가 채웁니다(§2.1).
 2. **공통 부품·경로·저장·조회 코드 (서브 에이전트 하나, sonnet)** — §2.2.1.
@@ -290,7 +290,7 @@ fvm flutter test test/app/router_test.dart  # 3번 — 아래 「경로 테스�
 
 #### 2.3.2 화면 대조 끝 표시와 비교안 정리
 
-대조가 끝나면 메인이 둘을 합니다.
+대조가 끝나면 메인이 둘을 합니다. 그 전에 단계 이름표를 붙입니다 — `.claude/scripts/stage-tag.sh 3-before-cleanup "화면 대조 끝 직전, 고르지 않은 비교안을 지우기 전"` (SKILL.md §3.2 표). 고르지 않은 비교안이 남아 있는 마지막 모습입니다.
 
 1. **`feature-list.md` 머리에 `화면 대조 끝: YYYY-MM-DD`를 적습니다.** 이 표시는 진행 상황 표시일 뿐입니다 — 문서를 고정한다는 뜻이 아닙니다. 다만 `feature-list.md`는 이 대조로 할 일 목록의 역할을 마쳤으므로, 그 뒤로는 화면이 늘거나 빠져도 갱신하지 않는 기록이 됩니다(코드에만 반영합니다). `/idea-to-mvp`가 지금 몇 단계인지 알아낼 때 이 표시를 「3단계 앞부분이 끝났다」는 단서로 씁니다(SKILL.md §1.2).
 2. **고르지 않은 비교안을 지웁니다.** git에는 남습니다. 2-2·2-3에서 고른 판은 이미 본 화면 자리로 옮겨졌으니 남은 것은 고르지 않은 판뿐입니다. 지울 자리는 아홉입니다 — ① 비교안 판 토큰 `lib/core/design/drafts.dart`의 고르지 않은 판 값(2-3을 거쳤으면 판 토큰 파일 `lib/core/design/drafts/{판}.dart`와 `drafts.dart`의 그 `export` 줄, 판 접두 확장도), ② 그 판의 골든 그림(`test/goldens/canvas/`에서 창 열쇠에 `draft-`가 든 그림 — 2-3 비교안의 열쇠 `draft-bold`·`draft-innov`·`draft-leap`도 `draft-`로 시작하니 같이 걸립니다), ③ 비교안 화면 폴더 `lib/dev/drafts/`의 고르지 않은 화면(2-3은 판 폴더 `lib/dev/drafts/{판}/` 통째), ④ 목록 손 부분 `lib/dev/canvas/screens.dart`의 `canvasOverrides`에 든 `drafts:` 항목, 그리고 2-3을 거쳤으면 ⑤ 고르지 않은 후보 제목 서체의 파일(`assets/fonts/`)과 `pubspec.yaml`의 등록 줄과 `FoundationType`의 후보 이름 상수, ⑥ 고르지 않은 비교안 로고 SVG(`assets/brand/`)와 그 등록 줄(고른 로고와 앱 아이콘 원본은 남깁니다), ⑦ 디자인 시스템 페이지의 「브랜드」 껍데기(`lib/dev/drafts/{판}/brand_panel.dart`)와 그 판 자리, ⑧ `main_dev.dart`·`main_canvas.dart`·셸 안 개발용 경로에 더한 줄(`devBranchRoutes` 등)과 점검 테스트 `test/draft_checks/{판}_check_test.dart`, ⑨ 고르지 않은 판만 쓰던 패키지(`flutter pub remove`와 `adr.md` 한 줄). 고른 판의 판 접두 상수는 접두를 떼고 1층(`foundation.dart`)으로 옮겨졌는지 봅니다. 서체 파일은 MB 단위라 안 지우면 앱 크기가 불어납니다. 2-4에서 「쓰지 않음」으로 정한 공간 비교안도 같이 지웁니다 — 공간 폴더 `lib/dev/drafts/stay/`, 판 토큰 파일 `lib/core/design/drafts/stay.dart`와 `drafts.dart`의 그 `export` 줄, 디자인 시스템 페이지 「머무는 공간」 껍데기와 등록, 목업 캔버스 목록의 공간·가까이·많을 때 줄과 그 골든 그림(열쇠에 `draft-stay`), 점검 테스트 `test/draft_checks/stay_check_test.dart`, 공간만 쓰던 패키지(소리 재생 패키지 등 — `flutter pub remove`와 `adr.md` 한 줄). 자기 점검 그림(`.draft-checks/`)은 git에 올라가지 않으니 지우지 않아도 됩니다(`2-3-personality.md` §4.5). 지우기 전에 본 코드가 비교안을 불러오는 곳이 0건인지 확인합니다.
@@ -438,7 +438,7 @@ grep -rnE 'dev/drafts|design/drafts' lib --include='*.dart' | grep -vE '^lib/dev
 | 검사 | 명령 | 언제 |
 |---|---|---|
 | 형식 | `fvm dart format --output=none --set-exit-if-changed .` | 매번 |
-| 정적 분석(린트·타입) | `fvm flutter analyze` | 매번 |
+| 정적 분석(린트·타입) | `fvm flutter analyze`와 `fvm dart analyze` — 분석기 플러그인으로 붙인 Riverpod 린트는 `dart analyze`에서만 돕니다 | 매번 |
 | 단위·위젯 테스트 (글자 배율 2.0 넘침·대비 테스트 포함) | `fvm flutter test --exclude-tags golden` | 매번. 대비 테스트는 `AppTokens.light.contrastPairs`를 읽습니다 — 브랜드 색을 들이기 전(`AppBrand.none`)에는 브랜드 짝이 목록에서 빠지고, 들인 뒤에는 브랜드 면 대비 세 줄이 함께 돕니다 |
 | 생성 코드 최신 | `fvm dart run build_runner build` 뒤 `git status --porcelain`에 생성 파일 차이 0 | 매번 |
 | 골든 테스트 | `.claude/scripts/build-lock.sh fvm flutter test --tags golden` (화면을 바꿨으면 `--update-goldens`로 다시 찍음) | 화면을 바꾼 뒤, 이 맥에서만 |
@@ -484,7 +484,7 @@ grep -rnE 'dev/drafts|design/drafts' lib --include='*.dart' | grep -vE '^lib/dev
 | 18 | 0건. 무거운 패키지를 안 들였으면(`HEAVY_PKGS:` 줄이 없고, 2-3에서 혁신판의 입력 패키지·파격판의 수단 패키지를 들이지 않았거나 건너뜀) 「해당 없음」으로 따로 적습니다 — 통과와 다릅니다 | 연결 정보 `HEAVY_PKGS:`에 적힌 패키지를 `HEAVY_PARTS:`에 없는 파일에서 불렀으면, 그 호출을 목록의 부품 안으로 옮깁니다. 정말 새 자리면 사용자 확인을 받아 `HEAVY_PARTS:` 줄에 더하고 `adr.md`에 한 줄 적습니다. `HEAVY_PKGS:`는 있는데 `HEAVY_PARTS:` 줄이 없으면 걸린 줄(목록 줄 없음)로 셉니다 |
 | 19 | 0건. 머무는 공간을 안 들였으면(`STAY_PALETTE:` 줄이 없고 `lib/core/design/stay/*_palette.dart`도 없음 — 브리프 「14」가 `없음`·`건너뜀`·`나중에`·`만들어 봄 — 쓰지 않음`) 「해당 없음」으로 따로 적습니다 — 통과와 다릅니다. 「14」가 `적용`인데 해당 없음이면 2-4 적용(`2-4-stay-space.md` §2.6)이 덜 된 것입니다 | 공간 팔레트를 `import`한 파일이 연결 정보 `STAY_PARTS:` 목록 밖이면 팔레트 대신 2층 이름을 쓰게 고치거나, 정말 공간 부품이면 사용자 확인을 받아 `STAY_PARTS:`에 더합니다. `design.dart` 같은 모음 파일이 팔레트를 `export`하면 그 줄을 지웁니다(모든 화면이 팔레트를 받게 됩니다). 팔레트 파일이 있는데 `STAY_PALETTE:`·`STAY_PARTS:` 줄이 없으면 연결 정보에 적습니다. 공간 부품 안에서 물건 제 색을 신호 자리(지금 고른 물건)에 쓴 것은 못 잡습니다 — 사람 눈과 `visual-polish.md` J6로 봅니다 |
 
-**10번 판정** — 스크립트가 「10-가」로 화면 목록의 「주 행동」 칸(`MVP 포함 = O`)을, 「10-나」로 주 버튼이 1개가 아닌 화면 파일을 찍습니다. 원칙의 정본은 design-system 스킬 「강조색은 어디에 쓰나」입니다(2-1 끝에서도 이 10번을 미리 돌립니다).
+**10번 판정** — 스크립트가 「10-가」로 화면 목록의 「주 행동」 칸(`MVP 포함 = O`)을, 「10-나」로 주 버튼이 1개가 아닌 화면 파일을 찍습니다. 화면 파일은 `lib/features/<흐름>/screens/` 아래 파일과 비교안 화면(2-2의 `{화면}_draft_a.dart`·`{화면}_draft_b.dart`, 2-3·2-4 판 폴더의 `{화면}_{판}.dart`)만 셉니다 — 이름이 `_page`로 끝나는 부품 파일은 화면으로 세지 않습니다. 원칙의 정본은 design-system 스킬 「강조색은 어디에 쓰나」입니다(2-1 끝에서도 이 10번을 미리 돌립니다).
 
 - **0개이고 「주 행동」이 「없음」** — 그 화면만의 주 행동이 없어 메뉴의 대표 행동이 주 버튼이 되는 화면입니다. 통과.
 - **0개인데 「주 행동」이 있음** — 주 버튼이 화면 파일 밖 위젯 파일에 있으면 그 파일을 열어 하나인지 보고 통과. 정말 없으면 「주 행동」의 행동을 주 버튼으로 바꿉니다.
@@ -499,7 +499,7 @@ grep -rnE 'dev/drafts|design/drafts' lib --include='*.dart' | grep -vE '^lib/dev
 하네스가 가진 점검표 `3-flutter-quality.md`(이 문서와 같은 폴더)로 **sonnet 에이전트 하나**가 앱 코드 전체를 리뷰하고 고칩니다. 사용자에게 「코드 품질 검사를 sonnet 에이전트 하나에 맡깁니다」라고 알립니다. 점검표는 부를 때만 들어오는 자료라 메인이 읽고, 「점검표」 절을 지시서의 `<data>`에 그대로 붙입니다. 지시서에 넣을 것은 이렇습니다.
 
 1. 「`<data>`의 점검표 항목마다 앱 코드(`lib/`, 생성 파일 제외)를 보고 위반을 고쳐라. 화면 겉모습·문구·디자인 값은 바꾸지 마라 — 바꿔야 고쳐지는 것은 고치지 말고 보고하라.」
-2. 「고친 뒤 `fvm flutter analyze`와 `fvm flutter test --exclude-tags golden`을 돌리고 결과를 보고하라. 둘 중 하나만 통과면 통과가 아니다.」
+2. 「고친 뒤 `fvm flutter analyze`·`fvm dart analyze`·`fvm flutter test --exclude-tags golden`을 돌리고 결과를 보고하라. 하나라도 통과하지 못하면 통과가 아니다.」
 3. 「보고: 항목별 고친 곳 수, 고치지 않고 남긴 것과 이유.」
 4. 「재위임 금지: 다른 에이전트를 띄우지 말고, 필요해 보이면 멈추고 보고하라.」
 
@@ -535,7 +535,7 @@ ls lib/l10n/*.arb
 
 **어디서 만들고 누가 올리나** — 실서비스에 나가는 것은 언제나 main의 커밋에서 만듭니다(`AGENTS.md` 「머지와 출시」). 그래서 차례는 이렇습니다.
 
-1. 코드 정리까지 끝난 이 브랜치에서 첫 버전 번호를 적습니다(§2.6.3).
+1. 코드 정리까지 끝난 이 브랜치에서 첫 버전 번호를 적습니다(§2.6.3). 그리고 단계 이름표를 붙입니다 — `.claude/scripts/stage-tag.sh 3 "3단계 끝, 내부 테스트에 올리기 전"` (SKILL.md §3.2 표).
 2. 사용자에게 「폰과 캔버스로 화면을 확인하셨다면 main에 합쳐도 되겠습니까?」라고 묻고, 「보내줘」를 들으면 `/done-task`로 합칩니다. 합쳐도 아무 데도 나가지 않습니다. Hosting 페이지(`hosting/`)도 이때 함께 들어갑니다.
 3. main에서 `backend-release`로 Hosting만 올려 개인정보처리방침 주소를 엽니다(웹 페이지 틀 README §3의 8번 — §2.6.2 ④).
 4. main에서 `store-release` 스킬의 「번들만 만들기」 갈래로 앱 번들을 만들고 서명을 확인합니다. 첫 판은 콘솔에서 사람이 올립니다(§2.6.4).
@@ -654,7 +654,7 @@ AI는 아래를 사람에게 그대로 건넵니다 — 올릴 파일의 경로(
 
 ### 3.1 다음 단계 핸드오프
 
-산출물 저장 직후, 매 단계 공통대로 **`/clear` 후 `/idea-to-mvp` 재호출**을 권합니다(SKILL.md §3.2). 다음은 **4단계(BackendBuild)** — 이 코드에 Firebase·로그인·계측을 얹어 진짜 서비스로 만듭니다. 저장·조회 코드를 Firestore로 바꿀 때 상태 흉내(`devStateAnswer`)도 함께 옮기고, 첫 실행 견본 데이터는 걷어냅니다. 4단계 베타 공유는 비공개 테스트 트랙으로 내고 검토를 통과시키는데, 그 순간 앱이 Draft 상태에서 풀립니다. 넘어가기 전에 §2.7대로 지인·팀 동료와 한 번 보고 수정거리를 반영할 수 있습니다(비의무).
+산출물 저장 직후, 매 단계 공통대로 **`/clear` 후 `/idea-to-mvp` 재호출**을 권합니다(SKILL.md §3.3). 다음은 **4단계(BackendBuild)** — 이 코드에 Firebase·로그인·계측을 얹어 진짜 서비스로 만듭니다. 저장·조회 코드를 Firestore로 바꿀 때 상태 흉내(`devStateAnswer`)도 함께 옮기고, 첫 실행 견본 데이터는 걷어냅니다. 4단계 베타 공유는 비공개 테스트 트랙으로 내고 검토를 통과시키는데, 그 순간 앱이 Draft 상태에서 풀립니다. 넘어가기 전에 §2.7대로 지인·팀 동료와 한 번 보고 수정거리를 반영할 수 있습니다(비의무).
 
 ## 4. 산출물 스펙
 

@@ -57,6 +57,10 @@ void main() {
       for (var i = 0; i < _settleSteps; i++) {
         await tester.pump(_settleStep);
       }
+      // 데이터를 받은 뒤에야 생긴 사진(저장·조회 코드를 거쳐 늦게 그려지는 견본 사진)도 불러온다.
+      // 위에서 한 번만 부르면 그때 화면에 없던 사진이 빈 자리로 찍힌다(2026-10 실측).
+      await tester.loadAssets();
+      await tester.pump(_settleStep);
 
       await expectLater(
         find.byType(CanvasPhone),

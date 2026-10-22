@@ -131,7 +131,7 @@ GoRouter createAppRouter({String initialLocation = '/'}) {
 3. (2-3을 할 때만) `test/draft_checks/draft_check_test.dart.template`을 판마다 `test/draft_checks/<판>_check_test.dart`로 복사합니다. 머리 주석의 규칙(자기 판 파일만 import · `pumpAndSettle` 금지)은 지시서에도 넣습니다.
 4. 앱 테마가 앱에 넣은 한글 서체를 이름으로 가리키는지 봅니다(design-system 스킬의 서체 규칙). 테스트 안에는 폰의 기본 한글 서체가 없어서, 테마가 넣은 서체를 가리키지 않으면 한글이 「NOGLYPH」라고 적힌 네모 상자로 찍힙니다.
 
-⑧ **검사를 돌립니다** — `flutter analyze`, `flutter test --exclude-tags golden`, `dart run tool/canvas_list.dart`, `.claude/scripts/build-lock.sh flutter test --tags golden --update-goldens`. 그리고 §4대로 시뮬레이터에 띄워 앱이 뜨는지, 코멘트 서버 창에 `GET /comments` 줄이 찍히는지(`--log`로 켰을 때) 봅니다. 화면이 맞는지는 사람이 봅니다.
+⑧ **검사를 돌립니다** — `flutter analyze`, `dart analyze`(Riverpod 린트는 이쪽에서만 돕니다), `flutter test --exclude-tags golden`, `dart run tool/canvas_list.dart`, `.claude/scripts/build-lock.sh flutter test --tags golden --update-goldens`. 그리고 §4대로 시뮬레이터에 띄워 앱이 뜨는지, 코멘트 서버 창에 `GET /comments` 줄이 찍히는지(`--log`로 켰을 때) 봅니다. 화면이 맞는지는 사람이 봅니다.
 
 ## 4. 띄우기
 

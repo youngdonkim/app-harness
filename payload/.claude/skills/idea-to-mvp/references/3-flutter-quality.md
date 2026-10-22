@@ -176,4 +176,4 @@ description: 3단계 배포 전 검사 ②(코드 품질 검사)의 점검표. F
 | Q1 | 3 | — |
 | Q7 | 0 | `profile_header.dart`의 배경 그림은 화면 폭 전체라 줄이지 않음 |
 
-이어서 `fvm flutter analyze`와 `fvm flutter test --exclude-tags golden` 결과를 한 줄씩 적습니다. 둘 중 하나만 통과면 통과로 쓰지 않습니다.
+이어서 `fvm flutter analyze`·`fvm dart analyze`·`fvm flutter test --exclude-tags golden` 결과를 한 줄씩 적습니다. 하나라도 통과하지 못했으면 통과로 쓰지 않습니다.

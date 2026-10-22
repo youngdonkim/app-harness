@@ -147,9 +147,11 @@ c1() { # 색·숫자 하드코딩 (ui/ 뺀다)
   gx "Radius\.circular\([[:space:]]*${NUM}" "${EX[@]}"
 }
 
-c2() { # foundation.dart import (core/design 밖 전부, ui 포함)
+c2() { # 우리 1층 파일(core/design/foundation.dart) import (core/design 밖 전부, ui 포함)
+  # 경로에 core/design/ 이 붙은 것만 잡는다 — Flutter 자체의 package:flutter/foundation.dart 는 1층이 아니다.
+  # (실측 2026-10: 자동 생성 다국어 파일·캔버스 코드가 package:flutter/foundation.dart 를 불러 매번 오탐이 났다)
   ex "$LIB_DIR"; [ ${#EX[@]} -eq 0 ] && return
-  ga "^[[:space:]]*(import|export)[[:space:]].*foundation\.dart" "$LIB_DIR" | g -v "^${DESIGN_DIR}/"
+  ga "^[[:space:]]*(import|export)[[:space:]].*core/design/foundation\.dart" "$LIB_DIR" | g -v "^${DESIGN_DIR}/"
 }
 
 c3() { # 화면 폭을 셸 밖에서 읽음 (ui 뺀다)
@@ -252,7 +254,14 @@ BEGIN { st = 0; done = 0 }
 ' "$FEATURE_LIST"
   fi
   echo "  (참고) 10-나. 화면 파일마다 AppButtonVariant.primary 수 — 1개가 아닌 파일만 나온다 (화면 파일 밖 위젯 파일의 버튼은 안 센다)"
-  find "${SCREEND[@]}" \( -name '*_screen.dart' -o -name '*_page.dart' \) -not -name '*.g.dart' 2>/dev/null | sort > "$T/screens.txt"
+  # 화면 파일은 자리와 이름 규칙으로만 고른다 — 파일 이름 끝(_page·_screen)으로 고르면 이름이 그렇게 끝나는 부품까지 화면으로 센다.
+  #   본 화면: lib/features/<흐름>/screens/ 아래 파일
+  #   2-2 비교안: {화면}_draft_a.dart · {화면}_draft_b.dart
+  #   2-3·2-4 비교안: 판 폴더 {판}/ 안의 {화면}_{판}.dart (판 = bold · innov · leap · stay)
+  # (실측 2026-10: 판 폴더의 부품 파일 이름이 _page.dart 로 끝나 「주 버튼 0개 화면」으로 찍혔다)
+  find "${SCREEND[@]}" -name '*.dart' -not -name '*.g.dart' -not -name '*.freezed.dart' 2>/dev/null \
+    | g -E '/screens/.+\.dart$|_draft_[a-z]+\.dart$|/bold/[^/]+_bold\.dart$|/innov/[^/]+_innov\.dart$|/leap/[^/]+_leap\.dart$|/stay/[^/]+_stay\.dart$' \
+    | sort > "$T/screens.txt"
   local f n
   while read -r f; do
     [ -n "$f" ] || continue
@@ -503,7 +512,7 @@ run() { # 번호 이름 함수 종류(h=걸린 줄 수, v=값, s=화면 파일 �
 }
 
 run 1  "색·숫자 하드코딩 (Color·Colors·EdgeInsets·SizedBox·fontSize·Radius)" c1 h
-run 2  "foundation.dart import" c2 h
+run 2  "1층 파일(core/design/foundation.dart) import" c2 h
 run 3  "화면 폭 읽기(MediaQuery size)가 셸 밖" c3 h
 run 4  "부품 파일 ↔ 인벤토리 색인" c4 h
 run 5  "제출 동작 — 한글 조합 가드 사람 확인" c5 h

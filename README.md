@@ -234,7 +234,7 @@ git clone https://github.com/youngdonkim/app-harness.git ~/dev/app-harness
 `/project-init`이 프로젝트에 만드는 것들입니다. `.github/workflows/ci.yml`까지는 원본 `payload/`에서 같은 경로로 복사돼 오는 것이고, `AGENTS.md`부터는 스킬이 따로 만듭니다.
 
 - **`.claude/skills/`·`.claude/agents/`·`.claude/hooks/`** — 세션을 열 때 등록돼 스킬·서브에이전트·훅이 작동합니다. 스킬 본문은 부를 때마다 읽어서 고치면 다음 호출부터 바로 반영되고, 에이전트 정의는 응답을 한 번 끝낸 다음 턴부터, 훅은 바뀐 다음 명령부터 지금 세션에 잡힙니다([§6.3](#63-언제부터-적용되나)).
-- **`.claude/scripts/`** — 실행기 `with-owner.sh`(gh·Firebase CLI·fastlane처럼 키가 필요한 명령을 이 컴퓨터의 계정 장부 키로 돌립니다)와 3단계 내보내기 전 디자인 규칙 검사 `design-check.sh`, 그리고 빌드 잠금 `build-lock.sh`(한 맥에서 여러 프로젝트가 돌 때 안드로이드·iOS 빌드와 골든 테스트를 맥 전체에서 한 번에 하나만 돌립니다).
+- **`.claude/scripts/`** — 실행기 `with-owner.sh`(gh·Firebase CLI·fastlane처럼 키가 필요한 명령을 이 컴퓨터의 계정 장부 키로 돌립니다)와 3단계 내보내기 전 디자인 규칙 검사 `design-check.sh`, 빌드 잠금 `build-lock.sh`(한 맥에서 여러 프로젝트가 돌 때 안드로이드·iOS 빌드와 골든 테스트를 맥 전체에서 한 번에 하나만 돌립니다), 그리고 단계 이름표 `stage-tag.sh`(idea-to-mvp 단계가 끝날 때와 판을 고르기 직전에 지금 모습을 커밋하고 `stage/<이름>` 태그를 붙여 GitHub에 올립니다 — 나중에 그때 모습으로 돌아가 볼 수 있습니다).
 - **`.claude/rules/`** — 특정 종류의 파일을 다룰 때만 적용되는 세부 규칙 모음(문서 작성 규칙·보안 기본 규칙).
 - **`.claude/templates/`** — 단계마다 프로젝트에 펼쳐 넣는 틀입니다. 앱 뼈대와 Firebase 설정(`firebase/`), 안드로이드 서명(`android-signing/`), 목업 캔버스(`mockup-canvas/`), 견본 지도 부품(`sample-map/`), 개인정보처리방침·계정 삭제 요청 같은 Hosting 웹 페이지(`hosting-site/`), 플레이 올리기 도구(`fastlane/`), 스토어 등록정보 서식(`store-listing.md`), `delegation-integrator`가 쓰는 문서 틀(sources·status).
 - **`docs/git-workflow.md`** — 훅과 작업 스킬들이 따르는 git 작업 흐름을 사람이 읽으라고 정리해 둔 문서.
@@ -376,7 +376,7 @@ payload/                              # 프로젝트 루트의 미러 — 이 �
 payload/.claude/skills/               # 단계 스킬·출시 스킬·공통 스킬
 payload/.claude/agents/               # 서브에이전트
 payload/.claude/hooks/                # 훅 스크립트
-payload/.claude/scripts/              # 실행기 with-owner.sh(계정 장부 키로 gh·Firebase CLI·fastlane을 돌림)·디자인 규칙 검사 design-check.sh·빌드 잠금 build-lock.sh
+payload/.claude/scripts/              # 실행기 with-owner.sh(계정 장부 키로 gh·Firebase CLI·fastlane을 돌림)·디자인 규칙 검사 design-check.sh·빌드 잠금 build-lock.sh·단계 이름표 stage-tag.sh
 payload/.claude/rules/                # 특정 파일을 다룰 때만 적용되는 세부 규칙
 payload/.claude/templates/            # 앱 뼈대·Firebase·서명·목업 캔버스·견본 지도·Hosting 웹 페이지·fastlane·스토어 등록정보 틀, delegation-integrator 문서 틀
 payload/docs/git-workflow.md          # 훅·done-task가 참조하는 작업 흐름 문서

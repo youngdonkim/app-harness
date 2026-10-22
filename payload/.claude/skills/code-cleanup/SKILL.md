@@ -90,7 +90,7 @@ base=$(git log origin/main..HEAD --no-merges --format='%H %s' | grep -E '^[0-9a-
 
 <example>
 <direction>
-아래 항목만 반영해라. 화면에 보이는 것과 동작(문구·배치·순서·주소·저장되는 값)은 바꾸지 않는다. 반영 뒤 화면을 열지 않는 검사를 돌리고 결과를 보고한다 — `fvm flutter analyze`와 `fvm flutter test --exclude-tags golden`은 언제나 둘 다(하나만 통과한 것은 통과로 보지 않는다), 화면 코드를 고쳤으면 `bash .claude/scripts/design-check.sh`의 새로 걸린 줄(반영 전에는 없던 줄)도 보고하고, `functions/src/`를 고쳤으면 `functions/`에서 `npm run lint && npm run build && npm test`도 돌린다(node 명령은 AGENTS.md대로 `fnm exec --using=.nvmrc --`를 앞에 붙인다). 생성 파일을 건드렸으면 `fvm dart run build_runner build`로 다시 만들어 차이가 없게 한다.
+아래 항목만 반영해라. 화면에 보이는 것과 동작(문구·배치·순서·주소·저장되는 값)은 바꾸지 않는다. 반영 뒤 화면을 열지 않는 검사를 돌리고 결과를 보고한다 — `fvm flutter analyze`·`fvm dart analyze`(Riverpod 린트는 이쪽에서만 돈다)·`fvm flutter test --exclude-tags golden`은 언제나 셋 다(하나라도 빠진 것은 통과로 보지 않는다), 화면 코드를 고쳤으면 `bash .claude/scripts/design-check.sh`의 새로 걸린 줄(반영 전에는 없던 줄)도 보고하고, `functions/src/`를 고쳤으면 `functions/`에서 `npm run lint && npm run build && npm test`도 돌린다(node 명령은 AGENTS.md대로 `fnm exec --using=.nvmrc --`를 앞에 붙인다). 생성 파일을 건드렸으면 `fvm dart run build_runner build`로 다시 만들어 차이가 없게 한다.
 </direction>
 <data>
 <4에서 남긴 항목>

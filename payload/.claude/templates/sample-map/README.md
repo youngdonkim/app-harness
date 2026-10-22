@@ -51,7 +51,7 @@
 
 ⑤ **설계 결정 기록(ADR — `mvp/adr.md`)에 한 줄 적습니다** — 「지도는 지금 견본 지도(OpenFreeMap, 키 없음). 실서비스 지도 교체는 4단계 준비에서 정한다.」
 
-⑥ **확인합니다** — `flutter analyze`, `flutter test --exclude-tags golden`, iOS 시뮬레이터용 빌드(`.claude/scripts/build-lock.sh flutter build ios --simulator --debug -t lib/main_dev.dart`)와 안드로이드 디버그 빌드(같은 잠금을 앞에 붙임). 지도가 실제로 뜨는지, 점과 출처 표시가 보이는지, 지명이 한글로 나오는지는 사람이 시뮬레이터·폰·목업 캔버스에서 봅니다.
+⑥ **확인합니다** — `flutter analyze`, `dart analyze`(Riverpod 린트는 이쪽에서만 돕니다), `flutter test --exclude-tags golden`, iOS 시뮬레이터용 빌드(`.claude/scripts/build-lock.sh flutter build ios --simulator --debug -t lib/main_dev.dart`)와 안드로이드 디버그 빌드(같은 잠금을 앞에 붙임). 지도가 실제로 뜨는지, 점과 출처 표시가 보이는지, 지명이 한글로 나오는지는 사람이 시뮬레이터·폰·목업 캔버스에서 봅니다.
 
 ## 4. 알아 둘 것
 

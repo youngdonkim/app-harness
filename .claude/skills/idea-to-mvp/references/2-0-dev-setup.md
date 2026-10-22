@@ -301,7 +301,7 @@ AI는 `fvm flutter devices`로 폰이 보이는지 확인합니다. 폰 준비�
    fvm flutter pub add dev:riverpod_lint
    ```
 
-   `riverpod_lint`를 켜는 법(분석기에 붙이는 설정)은 판마다 바뀌어 왔으니 Riverpod 공식 문서(riverpod.dev)의 설치 안내대로 하고, `fvm flutter analyze` 말고 따로 돌려야 하는 명령이 생기면 ADR과 보고에 적습니다. `flutter_lints`는 `flutter create`가 이미 넣습니다.
+   `riverpod_lint`를 켜는 법(분석기에 붙이는 설정)은 판마다 바뀌어 왔으니 Riverpod 공식 문서(riverpod.dev)의 설치 안내대로 합니다. 안내대로 `analysis_options.yaml`의 `plugins:`에 붙이면 그 린트는 `fvm flutter analyze`에서는 돌지 않고 `fvm dart analyze`에서만 돕니다(2026-10 실측, Flutter 3.47) — 그래서 이 하네스의 모든 분석 자리는 두 명령을 함께 돌립니다. 두 명령 말고 따로 돌려야 하는 명령이 또 생기면 ADR과 보고에 적습니다. `flutter_lints`는 `flutter create`가 이미 넣습니다.
 3. **상태 흉내 파일 → `pubspec.yaml`·`analysis_options.yaml` → 안드로이드 flavor → 안드로이드 서명** — 서명은 서명 틀 `README.md`의 「넣는 순서」입니다. 업로드 키는 지금 만들지 않습니다 — 키가 없으면 개발용 서명으로 빌드되고, 3단계 배포 전에 만듭니다.
 4. **iOS flavor** — `ruby tool/ios_flavors.rb <패키지 이름> <서비스 이름>`. xcodeproj가 없으면 §2.1 표대로 깝니다.
 5. **만들고 검사합니다** — 틀 `README.md` §3 ⑩의 명령 전부. iOS 빌드는 Xcode가, 안드로이드 빌드는 Android SDK가 있어야 하니, 없으면 그 빌드만 「남은 빌드」로 보고합니다.
@@ -422,6 +422,7 @@ Dart·Flutter 팀이 낸 클로드 코드 플러그인이 있습니다. 안에 D
 - [ ] **목업 캔버스 뼈대** (§2.6) — 캔버스 틀 `README.md` §3 ①~⑦을 마쳤습니다. 「[서비스 이름] 디자인 시스템」 페이지가 캔버스 맨 끝 창에 있습니다. 캔버스 빌드의 지원 기기 값이 `1 2`, 개발용 빌드가 `1`입니다. 골든 그림을 찍었습니다.
 - [ ] **화면 밖 검사 통과** — 앱 뼈대 틀 `README.md` §3 ⑩의 명령(코드 생성·형식·분석·테스트·검사 스크립트 둘·dev·prod 안드로이드·iOS 빌드)과 캔버스 검사가 통과했습니다. 사람 몫 때문에 남은 빌드는 사람이 마친 뒤 돌려 통과했습니다. CI가 같은 검사를 돕니다.
 - [ ] **공식 플러그인** (§2.7) — 선택이라 한 줄로 안내만 했습니다.
+- [ ] **단계 이름표** — 위 항목을 다 채운 뒤 `.claude/scripts/stage-tag.sh 2-0 "2-0 개발환경 준비 끝"`을 돌렸습니다(SKILL.md §3.2 표).
 
 ## 4. 사용자 응대 톤
 

@@ -190,6 +190,7 @@ flavor마다 만드는 빌드 설정 파일(`ios/Flutter/Debug-dev.xcconfig` 등
 fvm dart run build_runner build --delete-conflicting-outputs
 fvm dart format --output=none --set-exit-if-changed .
 fvm flutter analyze
+fvm dart analyze          # Riverpod 린트(분석기 플러그인)는 이쪽에서만 돈다
 fvm flutter test
 fvm dart run tool/check_firebase_config.dart
 fvm dart run tool/check_analytics_events.dart
