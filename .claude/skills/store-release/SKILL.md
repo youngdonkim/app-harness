@@ -44,7 +44,7 @@ description: main의 커밋으로 실서비스 앱 번들(AAB)을 만들어 구�
 ## 2. 지키는 것
 
 - **main의 커밋에서만 만듭니다.** 작업 브랜치에서 만든 번들은 「실서비스 = main」을 깹니다. fastlane은 main이 아니면 감시 훅과 Fastfile이 둘 다 막습니다.
-- **키를 부르는 명령은 실행기를 앞에 붙입니다** — `.claude/scripts/with-owner.sh …`. 실행기가 계정 장부에서 `PLAY_SERVICE_ACCOUNT_FILE`(플레이 서비스 계정 키 파일 경로)과 `ANDROID_UPLOAD_KEY_PROPERTIES`(업로드 키 `key.properties` 원본 경로)를 환경변수로 넣어 줍니다. 두 키 파일은 프로젝트 밖 장부 폴더의 `keys/`에 있습니다.
+- **키를 부르는 명령은 실행기를 앞에 붙입니다** — `.claude/scripts/with-owner.sh …`. 실행기가 계정 장부에서 `PLAY_SERVICE_ACCOUNT_FILE`(플레이 서비스 계정 키 파일 경로)을 넣고, 이 앱의 패키지 이름(`applicationId`)으로 업로드 키 비밀번호 파일 경로 `~/.config/harness/keys/<패키지 이름>-upload.properties`를 찾아 `ANDROID_UPLOAD_KEY_PROPERTIES`로 넣어 줍니다. 업로드 키는 앱마다 따로라 장부에 적지 않습니다. 두 키 파일은 프로젝트 밖 장부 폴더의 `keys/`에 있습니다.
 - **키 값을 화면에 내지 않습니다** — 키 파일이나 `key.properties`를 `cat`하지 않고, 비밀번호를 대화·문서·주석·커밋 메시지에 적지 않습니다. 이전 앱에서 확인한 교훈: 워크플로 파일에 비밀번호가 평문으로 남은 사고가 있었습니다. 감시 훅이 커밋 때 `storePassword=` 같은 줄을 막습니다.
 - **업로드 키는 빌드하는 동안만 프로젝트에 연결하고 끝나면 지웁니다**(§4.3).
 - **개발용(debug) 서명 번들은 올리지 않습니다**(§4.4).
@@ -78,7 +78,7 @@ Draft가 풀렸는지 확실하지 않으면 사람에게 묻거나, fastlane �
 ### 4.1 시작 확인
 
 1. **지금 자리** — `git branch --show-current`가 `main`인지, `git status --porcelain`이 비었는지, `git pull --ff-only`로 원격 main과 같은지 봅니다. 작업 브랜치에 서 있으면 먼저 그 작업을 합칠지 사용자에게 묻습니다 — 합치지 않은 코드는 올리지 않습니다.
-2. **계정** — 처음 쓰는 컴퓨터거나 처음 올리는 앱이면 `.claude/scripts/with-owner.sh --check`로 소유와 장부의 키 이름(`ANDROID_UPLOAD_KEY_PROPERTIES`, fastlane 갈래면 `PLAY_SERVICE_ACCOUNT_FILE`)이 있는지 봅니다. 콘솔에 로그인한 계정이 `AGENTS.md` 계정 표의 「구글 플레이 콘솔 개발자 계정」과 같은지는 사람이 봅니다.
+2. **계정** — 처음 쓰는 컴퓨터거나 처음 올리는 앱이면 `.claude/scripts/with-owner.sh --check`로 소유와, 「업로드 키」 줄이 「있음」인지(fastlane 갈래면 장부의 키 이름에 `PLAY_SERVICE_ACCOUNT_FILE`도 있는지) 봅니다. 「아직 없음」이면 업로드 키를 아직 만들지 않은 것이고, 장부의 옛 `ANDROID_UPLOAD_KEY_PROPERTIES` 줄을 옮기라는 주의가 나오면 그 안내대로 옮긴 뒤 진행합니다. 콘솔에 로그인한 계정이 `AGENTS.md` 계정 표의 「구글 플레이 콘솔 개발자 계정」과 같은지는 사람이 봅니다.
 3. **판 이름과 번호** — `pubspec.yaml`의 `version: x.y.z+N`과 가장 큰 `v*` 태그를 봅니다(`git tag --list 'v*' --sort=-v:refname | head -1`).
 4. **사용자에게 한 번에 묻습니다** — 「`<x.y.z>+<N>`(빌드 번호를 올려야 하면 올린 뒤의 번호)으로, `<갈래>`로 `<트랙>`에 내보냅니다. 빌드 번호를 올리는 커밋은 작업 브랜치에서 PR로 합칩니다. 진행할까요?」 이 대답이 빌드 번호 커밋을 합치는 「보내줘」를 겸합니다 — 화면이 바뀌지 않는 한 줄짜리 커밋이라서입니다. 화면 코드가 함께 바뀌어 있으면 겸하지 않고, 평소처럼 화면 확인 뒤 `/done-task`부터 합니다.
 
@@ -93,13 +93,13 @@ Draft가 풀렸는지 확실하지 않으면 사람에게 묻거나, fastlane �
 
 프로젝트 맨 위 폴더에서, main에서 합니다.
 
-1. **업로드 키를 연결합니다** — 서명 설정은 `android/key.properties`가 있으면 업로드 키로, 없으면 debug 키로 서명합니다(서명 틀 `.claude/templates/android-signing/README.md`). 장부의 경로를 그 자리에 바로가기(심볼릭 링크)로 겁니다. 경로는 실행기 안에서만 펼칩니다.
+1. **업로드 키를 연결합니다** — 서명 설정은 `android/key.properties`가 있으면 업로드 키로, 없으면 debug 키로 서명합니다(서명 틀 `.claude/templates/android-signing/README.md`). 실행기가 넣어 준 이 앱의 비밀번호 파일 경로를 그 자리에 바로가기(심볼릭 링크)로 겁니다. 경로는 실행기 안에서만 펼칩니다.
 
    ```bash
    .claude/scripts/with-owner.sh bash -c 'test -f "$ANDROID_UPLOAD_KEY_PROPERTIES" && ln -sfn "$ANDROID_UPLOAD_KEY_PROPERTIES" android/key.properties'
    ```
 
-   실패하면 장부에 `ANDROID_UPLOAD_KEY_PROPERTIES`가 없거나 파일이 없는 것입니다 — 멈추고 사람에게 알립니다. 업로드 키를 새로 만드는 일은 3단계 문서(§2.6.2 ⑥)와 서명 틀 README 몫입니다.
+   실패하면 이 앱의 업로드 키 비밀번호 파일(`~/.config/harness/keys/<패키지 이름>-upload.properties`)이 없거나, 실행기가 패키지 이름을 읽지 못한 것입니다 — `.claude/scripts/with-owner.sh --check`의 「업로드 키」 줄을 보고 멈춰 사람에게 알립니다. 업로드 키를 새로 만드는 일은 3단계 문서(§2.6.2 ⑥)와 서명 틀 README 몫입니다.
 
 2. **번들을 만듭니다** — 4단계부터는 실서비스 설정 파일 `env/prod.json`이 있으면 그것을 함께 넘깁니다(`4-3-backend-deploy.md`).
 
@@ -221,7 +221,7 @@ fastlane(스토어 올리기를 명령으로 하는 도구)의 `supply`(플레�
 | `Only releases with status draft may be created on draft app` | 앱이 아직 Draft App | 「번들만 만들기」로 돌아가 사람이 콘솔로 올립니다. 비공개 테스트 검토를 통과하면 풀립니다 |
 | 401·403, 「권한이 없습니다」 | 서비스 계정 권한이 아직 안 퍼졌거나, API가 꺼졌거나, 앱에 초대가 안 됨 | 다시 시도하지 않고 §8의 1·3번을 사람에게 확인받습니다. 초대 뒤 하루가 안 지났으면 기다립니다 |
 | 「이 버전 코드는 이미 사용되었습니다」 류 | 같은 빌드 번호를 다시 올림 | §4.2로 번호를 올립니다 |
-| 「업로드 키가 다릅니다」 류 | 다른 키로 서명됨 | 장부의 `ANDROID_UPLOAD_KEY_PROPERTIES`가 이 앱의 키를 가리키는지 사람과 확인합니다. 업로드 키를 잃었으면 구글에 재설정을 요청합니다(며칠 걸림) |
+| 「업로드 키가 다릅니다」 류 | 다른 키로 서명됨 | `~/.config/harness/keys/<패키지 이름>-upload.properties`의 `storeFile`이 같은 앱의 `<패키지 이름>-upload.jks`를 가리키는지, 그 키가 이 앱을 처음 올릴 때 쓴 키인지 사람과 확인합니다. 업로드 키를 잃었으면 구글에 재설정을 요청합니다(며칠 걸림) |
 | 목표 안드로이드 판이 낮다는 거절 | 그해 플레이 요건보다 `targetSdk`가 낮음 | 공식 요건을 확인하고, Flutter 판 올리기와 함께 작업 브랜치에서 맞춥니다 |
 | 스토어 정보 점검 실패 | 글자 수·자리 표시·그림 크기 | `ruby fastlane/check_metadata.rb`가 알려 준 대로 작업 브랜치에서 고칩니다 |
 | `ensure_git_branch`·`ensure_git_status_clean` 실패 | main이 아니거나 커밋 안 된 변경이 있음 | §4.1로 돌아갑니다 |

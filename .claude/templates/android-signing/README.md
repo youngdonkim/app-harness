@@ -34,13 +34,15 @@
 
 ## 업로드 키를 만들 때 (3단계 배포 전)
 
+업로드 키는 **앱마다 따로** 만듭니다. 파일 이름에 그 앱의 패키지 이름(`android/app/build.gradle.kts`의 `applicationId` — `.dev` 같은 접미사가 없는 실서비스 이름, 예: `app.example`)을 넣어, 같은 소유로 앱을 여럿 만들어도 서로 덮지 않게 합니다.
+
 ① AI가 `keytool`(자바에 든 열쇠 만들기 도구)로 업로드 키를 만듭니다. 파일은 **프로젝트 폴더 밖** `~/.config/harness/keys/<패키지 이름>-upload.jks`에 두고 권한을 600(나만 읽고 쓰기)으로 바꿉니다.
 
-② 비밀번호는 AI가 만들어 같은 폴더의 `key.properties`에 적습니다. 모양은 `key.properties.example` 그대로입니다. 계정 장부의 `ANDROID_UPLOAD_KEY_PROPERTIES`에 그 경로를 적습니다.
+② 비밀번호는 AI가 만들어 같은 폴더의 `<패키지 이름>-upload.properties`에 적고 권한을 600으로 바꿉니다. 모양은 `key.properties.example` 그대로이고, `storeFile`에는 ①의 `.jks` 절대 경로를 씁니다. 계정 장부에는 아무것도 적지 않습니다 — 실행기(`.claude/scripts/with-owner.sh`)가 패키지 이름으로 이 경로를 찾아 `ANDROID_UPLOAD_KEY_PROPERTIES` 환경변수로 넣어 줍니다. 자리가 맞는지는 `.claude/scripts/with-owner.sh --check`의 「업로드 키」 줄로 봅니다.
 
 ③ 비밀번호가 화면에 보이는 그 순간, 사람이 비밀번호 관리자에 키 파일과 함께 옮깁니다. 업로드 키를 잃으면 구글에 재설정을 요청해야 하고 며칠 걸립니다.
 
-④ 출시 빌드 때만 `store-release`가 장부의 경로를 `android/key.properties`로 연결(심볼릭 링크 — 다른 곳의 파일을 가리키는 바로가기)하고, 끝나면 지웁니다. 이 맥에서 연결한 채로 빌드했을 때 업로드 키로 서명되는 것을 확인했습니다.
+④ 출시 빌드 때만 `store-release`가 ②의 비밀번호 파일을 `android/key.properties`로 연결(심볼릭 링크 — 다른 곳의 파일을 가리키는 바로가기)하고, 끝나면 지웁니다. 이 맥에서 연결한 채로 빌드했을 때 업로드 키로 서명되는 것을 확인했습니다.
 
 ## 지켜야 할 것
 
