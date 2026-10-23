@@ -497,7 +497,7 @@ grep으로 못 잡는 것이 남는 한계는 지금과 같습니다. 오탐·�
 
 - Gradle 설정이 `android/key.properties`가 **있으면 release 서명, 없으면 debug 서명**으로 빌드합니다. 그래서 키가 없는 컴퓨터·CI에서도 빌드 확인은 됩니다. 대신 `store-release`는 올리기 전에 앱 번들의 서명이 업로드 키인지 확인합니다(debug로 서명된 번들을 올리는 실수 방지).
 - 업로드 키 파일(`*.jks`)은 **프로젝트 폴더 밖**, 이 컴퓨터의 계정 장부 폴더 아래(`~/.config/harness/keys/<패키지 이름>-upload.jks`, 파일 권한 600)에 둡니다. `key.properties`에는 그 경로만 적고 git에 올리지 않습니다.
-- 비밀번호는 AI가 만들어 장부에 넣고, 보이는 그 순간 사용자의 비밀번호 관리자에 키 파일과 함께 옮기라고 알립니다.
+- 비밀번호는 AI가 만들어 같은 폴더의 `<패키지 이름>-upload.properties`에 넣고(장부에는 적지 않음 — 앱마다 따로라서), 보이는 그 순간 사용자의 비밀번호 관리자에 키 파일과 함께 옮기라고 알립니다.
 - **워크플로 파일·주석·문서에 비밀번호를 평문으로 적지 않습니다.** 이전 앱에서 실제 사고가 있었습니다. 감시 훅이 커밋 전에 `storePassword=`·`keyPassword=` 같은 줄을 찾아 막는 검사를 더합니다(§3.14).
 - 비밀값 장부에 「업로드 키」 행을 둡니다 — 만든 곳·저장된 곳·다시 볼 수 있나·잃었을 때 재설정 길(구글에 업로드 키 재설정 요청, 며칠 걸림).
 
@@ -845,7 +845,7 @@ dart-define(빌드할 때 값을 넣는 방법)만으로는 부족합니다. 안
 | `FIREBASE_ACCOUNT` | Firebase CLI가 쓸 구글 계정 이메일(값이 아님) | §4.1의 (a)일 때. 실행기가 `firebase` 명령에 `--account <이메일>`을 붙여 줍니다 — Firebase CLI는 여러 계정을 등록해 두고 명령마다 고를 수 있습니다 |
 | `FIREBASE_SA_DIR` | 배포용 서비스 계정 키 파일 폴더 경로 | §4.1의 (b)일 때. 실행기가 `--project` 별칭으로 프로젝트 ID를 찾아 그 키 파일을 `GOOGLE_APPLICATION_CREDENTIALS`로 넣습니다 |
 | `PLAY_SERVICE_ACCOUNT_FILE` | 플레이 올리기용 서비스 계정 키 파일 경로 | fastlane이 읽습니다. 키 파일은 JSON이라 장부에는 경로만 |
-| `ANDROID_UPLOAD_KEY_PROPERTIES` | `key.properties` 원본 경로 | `store-release`가 빌드 때만 프로젝트로 연결 |
+| (장부에 두지 않음) `ANDROID_UPLOAD_KEY_PROPERTIES` | 업로드 키 비밀번호 파일 경로 | 앱마다 따로라 장부에 적지 않습니다. 실행기가 `applicationId`로 `~/.config/harness/keys/<패키지 이름>-upload.properties`를 정해 넣고, `store-release`가 빌드 때만 프로젝트로 연결 |
 | (삭제) `VERCEL_*`·`SUPABASE_ACCESS_TOKEN` | | |
 
 키 파일은 모두 장부 폴더(`~/.config/harness/keys/`, 권한 600) 안에 둡니다. 새로 만든 구글 클라우드 조직은 보안 기본값으로 **서비스 계정 키 만들기가 막혀 있을 수 있습니다** — 막히면 조직 관리자가 해당 프로젝트에만 예외를 열어야 하므로, 4-0과 6단계 앞 준비에 「키 만들기가 막히면 멈추고 사람에게」를 넣습니다.
@@ -868,7 +868,7 @@ dart-define(빌드할 때 값을 넣는 방법)만으로는 부족합니다. 안
 | 절 | 바뀌는 것 |
 |---|---|
 | 맨 위 | 「website-harness 하네스의 `/idea-to-mvp`」 → 「이 저장소가 원본인 Flutter 하네스의 `/idea-to-mvp`」. 「이 저장소가 만드는 것」은 1단계 인터뷰에서 채우는 그대로 |
-| 소유와 계정 — 문장 | 「CLI 키(gh·Vercel·Supabase)」 → 「CLI 키와 키 파일 경로(gh·Firebase·플레이 서비스 계정·업로드 키)」 |
+| 소유와 계정 — 문장 | 「CLI 키(gh·Vercel·Supabase)」 → 「CLI 키와 키 파일 경로(gh·Firebase·플레이 서비스 계정)」 + 「업로드 키는 앱마다 따로라 장부에 적지 않고 `keys/<패키지 이름>-upload.*`에 둔다」 |
 | 소유와 계정 — 표 | 아래 표로 바꿉니다 |
 | 작업 원칙 — 브랜치 | `done-task` 설명의 「머지는 곧 실서비스 배포」 → 「머지는 main에 합치기, 실서비스는 `backend-release`·`store-release`」(§3.13). 「화면을 확인하셨다면 보내도 되겠습니까?」 물음은 그대로 |
 | 작업 원칙 — 위임 | 「배포는 위임 금지」의 예에 「실서비스 Firebase 배포·스토어 올리기·콘솔 신고 답안 제출」을 더합니다 |

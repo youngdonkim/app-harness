@@ -18,8 +18,8 @@
 #                                  그 안의 <개발용 프로젝트 ID>.json 하나만 쓴다(아래 「개발용 관리자 키」).
 #                                  실서비스용 키 파일은 만들지 않는다.
 #              PLAY_SERVICE_ACCOUNT_FILE      — 플레이 올리기용 서비스 계정 키 파일 경로(fastlane이 읽음)
-#              ANDROID_UPLOAD_KEY_PROPERTIES  — 업로드 키 key.properties 원본 경로(store-release가 씀)
-#            키 파일(JSON·jks)은 장부 폴더 안 keys/(파일 600)에 두고 장부에는 경로만 적는다.
+#            키 파일(JSON)은 장부 폴더 안 keys/(파일 600)에 두고 장부에는 경로만 적는다.
+#            업로드 키는 장부에 적지 않는다(아래 「업로드 키」).
 # 프로젝트 전용 키: 장부를 읽은 뒤 프로젝트의 .env.cli(git 미추적)에서 장부가 다루지 않는 이름만
 #            더 읽는다(프로젝트마다 다른 값).
 #            장부가 다루는 이름이 .env.cli에 있으면 읽지 않고 옮기라고 알린다.
@@ -33,6 +33,12 @@
 #   키 파일의 project_id가 그 ID와 다르거나 파일이 없으면 실행하지 않는다(다른 자격 증명으로
 #   조용히 도는 것을 막는다). 대상이 prod이거나 없거나 섞였으면 붙이지 않는다.
 #   firebase·flutterfire 명령에는 붙이지 않는다 — 그쪽은 --account를 쓴다.
+# 업로드 키: 플레이 업로드 키는 앱마다 따로 둔다 — 같은 소유로 앱을 여럿 만들어도 서로 덮지 않게.
+#   android/app/build.gradle.kts(없으면 build.gradle)의 applicationId(접미사 없는 실서비스 패키지 이름)로
+#     ~/.config/harness/keys/<패키지 이름>-upload.jks         업로드 키 파일
+#     ~/.config/harness/keys/<패키지 이름>-upload.properties  비밀번호 파일(key.properties 모양)
+#   을 정하고, 명령을 실행할 때 ANDROID_UPLOAD_KEY_PROPERTIES에 비밀번호 파일 경로를 넣는다(store-release가 씀).
+#   장부나 .env.cli에 남은 옛 ANDROID_UPLOAD_KEY_PROPERTIES 줄은 읽지 않는다(--check가 옮기라고 알린다).
 #
 # 지키는 것: 어떤 경우에도 키 값을 화면(stdout·stderr)에 내지 않는다.
 #            --git-credential만 값을 내보내는데, 출력이 터미널이면 거절한다(git이 받을 때만).
@@ -53,8 +59,12 @@ OLD_FILE="$PROJECT_DIR/.env.cli"
 # Firebase CLI가 --account 대신 그 자격 증명을 먼저 쓸 수 있어 함께 지운다.
 CLEAR_NAMES="GH_TOKEN GITHUB_TOKEN GH_LOGIN GIT_USER_NAME GIT_USER_EMAIL FIREBASE_ACCOUNT FIREBASE_SA_DIR PLAY_SERVICE_ACCOUNT_FILE ANDROID_UPLOAD_KEY_PROPERTIES FIREBASE_TOKEN GOOGLE_APPLICATION_CREDENTIALS"
 # 키 파일 경로를 담는 이름 — --check가 파일이 있는지·권한이 600인지 본다(내용은 읽지 않는다).
-PATH_NAMES="FIREBASE_SA_DIR PLAY_SERVICE_ACCOUNT_FILE ANDROID_UPLOAD_KEY_PROPERTIES"
+PATH_NAMES="FIREBASE_SA_DIR PLAY_SERVICE_ACCOUNT_FILE"
+# 더 쓰지 않는 이름 — 파일에 있어도 읽지 않고, --check가 옮기고 지우라고 알린다.
+# (업로드 키 자리는 실행기가 패키지 이름으로 정한다 — 머리 주석 「업로드 키」)
+RETIRED_NAMES="ANDROID_UPLOAD_KEY_PROPERTIES"
 FIREBASERC="$PROJECT_DIR/.firebaserc"
+UPLOAD_KEY_DIR="$LEDGER_DIR/keys"
 
 say() { printf 'with-owner: %s\n' "$*" >&2; }
 
@@ -121,6 +131,8 @@ fi
 # --- 파일을 한 줄씩 읽어 이름=값을 환경변수로 넣는다 ---------------------------
 LOADED_NAMES=""
 STALE_NAMES=""
+RETIRED_FROM=""   # 옛 줄이 남은 파일(화면용, · 로 이음)
+RETIRED_PATH=""   # 옛 줄이 가리키던 경로(경로일 뿐 키 값이 아니다)
 load_file() {
   local f="$1" mode="${2:-all}" line name value
   [ "$mode" = "all" ] && for name in $CLEAR_NAMES; do unset "$name"; done
@@ -132,6 +144,12 @@ load_file() {
     value=${line#*=}
     name=$(printf '%s' "$name" | sed -E 's/^[[:space:]]*(export[[:space:]]+)?//; s/[[:space:]]+$//')
     printf '%s' "$name" | grep -Eq '^[A-Z_][A-Z0-9_]*$' || continue
+    case " $RETIRED_NAMES " in *" $name "*)
+      case " · $RETIRED_FROM · " in *" · $f · "*) ;; *) RETIRED_FROM="${RETIRED_FROM:+$RETIRED_FROM · }$f" ;; esac
+      RETIRED_PATH=$(printf '%s' "$value" | sed -E "s/^[\"']//; s/[\"']\$//")
+      case "$RETIRED_PATH" in "~/"*) RETIRED_PATH="$HOME/${RETIRED_PATH#\~/}" ;; esac
+      continue ;;
+    esac
     if [ "$mode" = "project" ]; then
       case " $CLEAR_NAMES " in *" $name "*)
         case " $STALE_NAMES " in *" $name "*) ;; *) STALE_NAMES="${STALE_NAMES:+$STALE_NAMES }$name" ;; esac
@@ -198,6 +216,50 @@ dev_key_lookup() {
   if [ "$kid" != "$dev_id" ]; then
     DEV_KEY_PROBLEM="키 파일의 프로젝트가 개발용($dev_id)이 아닙니다 (${kid:-읽지 못함})"; return 0
   fi
+}
+
+# 업로드 키 자리를 정한다 — UPLOAD_PKG·UPLOAD_PROPS·UPLOAD_JKS·UPLOAD_PROBLEM
+# applicationId 읽는 식은 templates/firebase의 check_firebase_config.dart와 같다:
+#   applicationId\s*=?\s*["']([^"']+)["'] 의 첫 일치(applicationIdSuffix는 걸리지 않는다).
+#   build.gradle.kts에 없으면 build.gradle을 본다.
+upload_key_lookup() {
+  UPLOAD_PKG=""
+  UPLOAD_PROPS=""
+  UPLOAD_JKS=""
+  UPLOAD_PROBLEM=""
+  local gname gfile found=0 pkg
+  for gname in build.gradle.kts build.gradle; do
+    gfile="$PROJECT_DIR/android/app/$gname"
+    [ -f "$gfile" ] || continue
+    found=1
+    # 못 찾으면 grep이 1로 끝난다 — pipefail에 걸려 실행기 전체가 멈추지 않게 || true로 받는다
+    pkg=$( { grep -oE "applicationId[[:space:]]*=?[[:space:]]*[\"'][^\"']+[\"']" "$gfile" 2>/dev/null || true; } | head -1 \
+      | sed -E "s/^applicationId[[:space:]]*=?[[:space:]]*[\"']([^\"']+)[\"']\$/\1/")
+    if [ -n "$pkg" ]; then UPLOAD_PKG="$pkg"; break; fi
+  done
+  if [ -z "$UPLOAD_PKG" ]; then
+    if [ "$found" -eq 0 ]; then
+      UPLOAD_PROBLEM="android 폴더가 아직 없음"
+    else
+      UPLOAD_PROBLEM="android/app/build.gradle(.kts)에서 applicationId를 찾지 못함"
+    fi
+    return 0
+  fi
+  # 패키지 이름 꼴(영문·숫자·_ 마디를 .로 이은 것)이 아니면 경로로 쓰지 않는다
+  if ! printf '%s' "$UPLOAD_PKG" | grep -Eq '^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$'; then
+    UPLOAD_PROBLEM="applicationId가 패키지 이름 꼴이 아님 ($UPLOAD_PKG)"
+    UPLOAD_PKG=""
+    return 0
+  fi
+  UPLOAD_PROPS="$UPLOAD_KEY_DIR/$UPLOAD_PKG-upload.properties"
+  UPLOAD_JKS="$UPLOAD_KEY_DIR/$UPLOAD_PKG-upload.jks"
+}
+
+# 옛 업로드 키 줄을 옮기라는 안내 한 줄(upload_key_lookup 뒤에 부른다)
+retired_upload_message() {
+  local dest="${UPLOAD_PROPS:-$UPLOAD_KEY_DIR/<패키지 이름>-upload.properties}"
+  local jks="${UPLOAD_JKS:-$UPLOAD_KEY_DIR/<패키지 이름>-upload.jks}"
+  printf '%s' "$RETIRED_FROM 의 ANDROID_UPLOAD_KEY_PROPERTIES 줄은 더 쓰지 않습니다(업로드 키는 앱마다 따로 둡니다) — 그 줄이 가리키는 파일${RETIRED_PATH:+($RETIRED_PATH)}을 $dest 로, 업로드 키 파일(.jks)을 $jks 로 옮기고 storeFile을 새 .jks 경로로 고친 뒤 그 줄을 지우세요"
 }
 
 perm_warning() {
@@ -267,6 +329,11 @@ if [ "${1:-}" = "--check" ]; then
     problems=1
   fi
   echo "있는 키: ${LOADED_NAMES:-(없음)}"
+  upload_key_lookup
+  if [ -n "$RETIRED_FROM" ]; then
+    echo "주의: $(retired_upload_message)"
+    problems=1
+  fi
   # Firebase 계정 이메일은 비밀값이 아니라 이름표라 그대로 보여 준다.
   if [ -n "${FIREBASE_ACCOUNT:-}" ]; then
     echo "Firebase 계정: $FIREBASE_ACCOUNT (firebase·flutterfire 명령에 --account로 붙음)"
@@ -299,6 +366,21 @@ if [ "${1:-}" = "--check" ]; then
         perm_warning "$DEV_KEY_FILE"
       fi
     fi
+  fi
+  # 업로드 키 — 앱마다 따로. 아직 없거나 패키지 이름을 못 읽는 것은 정상 단계라 실패로 치지 않는다.
+  if [ -n "$UPLOAD_PROBLEM" ]; then
+    echo "업로드 키: 패키지 이름을 못 읽음($UPLOAD_PROBLEM)"
+  elif [ -f "$UPLOAD_PROPS" ]; then
+    echo "업로드 키: 있음($UPLOAD_PROPS)"
+    perm_warning "$UPLOAD_PROPS"
+    if [ -f "$UPLOAD_JKS" ]; then
+      perm_warning "$UPLOAD_JKS"
+    else
+      echo "업로드 키: 비밀번호 파일은 있는데 업로드 키 파일이 없습니다 ($UPLOAD_JKS)"
+      problems=1
+    fi
+  else
+    echo "업로드 키: 아직 없음($UPLOAD_PROPS — 3단계 배포 전에 만듭니다)"
   fi
   if [ -n "${GH_TOKEN:-}" ]; then
     if ! command -v gh >/dev/null 2>&1; then
@@ -346,6 +428,14 @@ esac
 
 load_all
 [ -n "$STALE_NAMES" ] && say ".env.cli의 $STALE_NAMES 는 장부가 다루는 키라 읽지 않았습니다 — project-init 동기화로 옮기세요"
+
+# --- 업로드 키 자리 넣기 -------------------------------------------------------
+# 패키지 이름으로 정한 비밀번호 파일 경로를 넣는다(파일이 있는지는 store-release의 test -f가 본다).
+upload_key_lookup
+if [ -n "$UPLOAD_PROPS" ]; then
+  export ANDROID_UPLOAD_KEY_PROPERTIES="$UPLOAD_PROPS"
+fi
+[ -n "$RETIRED_FROM" ] && say "$(retired_upload_message)"
 
 # --- firebase·flutterfire 명령에 --account 붙이기 -----------------------------
 # Firebase CLI 로그인은 컴퓨터 전체에 여러 계정을 등록해 두고 명령마다 고르는 방식이다

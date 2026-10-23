@@ -26,7 +26,7 @@
 | Firebase 실서비스 프로젝트 | `{{폴더 이름}}-prod` (같음) |
 | Firebase CLI 로그인 계정 | {{이메일}} |
 | 플레이 올리기용 서비스 계정 | {{서비스 계정 이메일}} |
-| 플레이 업로드 키 보관 위치 | 이 컴퓨터 계정 장부 폴더 아래 `keys/` (자리만 적는다 — 값은 적지 않는다) |
+| 플레이 업로드 키 보관 위치 | 이 컴퓨터 계정 장부 폴더 아래 `keys/<패키지 이름>-upload.jks`·`.properties` — 앱마다 따로 (자리만 적는다 — 값은 적지 않는다) |
 | 카카오 developers | {{이메일}} |
 | 광고 계정 (구글 광고·메타·X) | {{각 계정 이름 (이메일)}} |
 | 설치 출처 측정 서비스 (MMP, AppsFlyer) | {{이메일}} |
@@ -35,7 +35,7 @@
 | 브라우저 작업 프로필 | {{브라우저 에이전트 프로필 id + UI 이름 (예: u1 「이름」) — 이 프로젝트의 화면 작업에 쓰는 프로필. 프로필 하나에는 한 소유의 계정만 둔다}} |
 | 2FA 수단·복구 코드 보관 위치 | {{수단(패스키·인증앱 등)과 복구 코드가 어디 있는지만 — 값은 적지 않는다}} |
 
-**외부 리소스가 처음 생기는 순간(첫 push·첫 배포·4-0 직전)마다 인증된 계정을 이 표와 대조하고, 다르면 만들지 않고 멈춰 보고한다.** 절차와 서비스별 함정은 그때 `docs/account-check.md`를 읽는다 — 메인이 읽고, 작업에 닿는 제약만 지시서로 넘긴다. 값(비밀번호·키·시크릿)은 여기 적지 않는다 — 계정 이름과 이메일뿐이다. **CLI 키와 키 파일 경로(gh·Firebase·플레이 서비스 계정·업로드 키)는 이 컴퓨터의 계정 장부 `~/.config/harness/<소유>.env`에 있다** — 키 파일 자체(서비스 계정 JSON·업로드 키 `.jks`)는 같은 장부 폴더의 `keys/`에 두고 장부에는 경로만 적는다. 프로젝트 밖이라 커밋되지 않고, 같은 소유의 프로젝트끼리 나눠 쓴다. 키를 쓰는 명령은 실행기 `.claude/scripts/with-owner.sh`를 앞에 붙여 부르고(아래 「이 프로젝트가 쓰는 도구」), 지금 어느 소유·계정으로 도는지는 `.claude/scripts/with-owner.sh --check`로 본다(키 값은 나오지 않는다). 키 값을 화면에 내는 명령(장부 파일 `cat` 등)은 쓰지 않는다. `(확인 필요)` 항목은 해당 서비스가 처음 필요해지는 때(플레이 콘솔은 3단계 배포 전, Firebase 계정은 4-0, 광고·MMP는 6단계 앞)에 확정되면 채운다.
+**외부 리소스가 처음 생기는 순간(첫 push·첫 배포·4-0 직전)마다 인증된 계정을 이 표와 대조하고, 다르면 만들지 않고 멈춰 보고한다.** 절차와 서비스별 함정은 그때 `docs/account-check.md`를 읽는다 — 메인이 읽고, 작업에 닿는 제약만 지시서로 넘긴다. 값(비밀번호·키·시크릿)은 여기 적지 않는다 — 계정 이름과 이메일뿐이다. **CLI 키와 키 파일 경로(gh·Firebase·플레이 서비스 계정)는 이 컴퓨터의 계정 장부 `~/.config/harness/<소유>.env`에 있다** — 키 파일 자체(서비스 계정 JSON)는 같은 장부 폴더의 `keys/`에 두고 장부에는 경로만 적는다. 업로드 키는 앱마다 따로라 장부에 적지 않는다 — 같은 `keys/`의 `<패키지 이름>-upload.jks`·`<패키지 이름>-upload.properties`에 두면 실행기가 패키지 이름으로 찾는다. 프로젝트 밖이라 커밋되지 않고, 같은 소유의 프로젝트끼리 나눠 쓴다. 키를 쓰는 명령은 실행기 `.claude/scripts/with-owner.sh`를 앞에 붙여 부르고(아래 「이 프로젝트가 쓰는 도구」), 지금 어느 소유·계정으로 도는지는 `.claude/scripts/with-owner.sh --check`로 본다(키 값은 나오지 않는다). 키 값을 화면에 내는 명령(장부 파일 `cat` 등)은 쓰지 않는다. `(확인 필요)` 항목은 해당 서비스가 처음 필요해지는 때(플레이 콘솔은 3단계 배포 전, Firebase 계정은 4-0, 광고·MMP는 6단계 앞)에 확정되면 채운다.
 
 **이 표가 답하는 건 「누구의 계정인가」 하나다.** 어떤 비밀값이 어디에 들어가 있고 언제 만료되는지는 **비밀값 장부**(`mvp/backend-build.md` — 서식은 `4-0-backend-prep.md` §4)가 정본이다 — 토큰 이름·만료일을 이 표에 적지 않는다.
 
@@ -169,7 +169,7 @@ design-system 스킬의 bootstrap-project.md 절차가 아래 항목을 여기�
 - **Node.js (서버 함수·Firebase CLI용)** — 2단계 개발환경 준비에서 AI가 fnm(Node 버전 관리 도구)으로 이 프로젝트 판(`.nvmrc`)을 받아 둔다. 앱 코드가 아니라 Cloud Functions(서버 함수, TypeScript)와 Firebase CLI, 보안 규칙 테스트가 이 위에서 돈다. **node·npm·npx 명령(`npm run`·`npx firebase` 포함)은 언제나 앞에 `fnm exec --using=.nvmrc --`를 붙여 저장소 최상위 폴더에서 부른다**(fnm이 명령 경로에 없으면 `~/.local/share/fnm/fnm`). 셸 설정 파일은 고치지 않는다.
 - **Firebase CLI** — 4-0에서 저장소 최상위 `package.json`의 개발 의존성으로 깔아 `npx firebase`로 부른다. 인증은 계정 장부의 `FIREBASE_ACCOUNT`(로그인해 둔 구글 계정 이메일)이고, 실행기가 `firebase` 명령에 `--account`를 자동으로 붙인다. **모든 firebase 명령은 `--project dev` 또는 `--project prod`를 반드시 적고, `firebase use`(기본 프로젝트 지정)는 쓰지 않는다.** 실서비스 배포 꼴: `.claude/scripts/with-owner.sh fnm exec --using=.nvmrc -- npx firebase <명령> --project prod`.
 - **FlutterFire CLI** — 앱에 Firebase 설정 파일을 만들어 주는 도구. `fvm dart pub global activate flutterfire_cli`로 깔고, 실행기를 앞에 붙여 부른다.
-- **fastlane (Ruby)** — 6단계 앞에서 켠다. 스토어 정보와 앱 번들을 플레이에 올린다. `bundle exec fastlane`을 실행기를 앞에 붙여 부르고, main에서만 돌린다. 인증은 장부의 `PLAY_SERVICE_ACCOUNT_FILE`(서비스 계정 키 파일 경로)이고, 앱 서명은 장부의 `ANDROID_UPLOAD_KEY_PROPERTIES`(업로드 키 `key.properties` 원본 경로)를 `store-release`가 빌드 때만 프로젝트로 연결한다.
+- **fastlane (Ruby)** — 6단계 앞에서 켠다. 스토어 정보와 앱 번들을 플레이에 올린다. `bundle exec fastlane`을 실행기를 앞에 붙여 부르고, main에서만 돌린다. 인증은 장부의 `PLAY_SERVICE_ACCOUNT_FILE`(서비스 계정 키 파일 경로)이고, 앱 서명은 이 앱의 업로드 키 비밀번호 파일(`~/.config/harness/keys/<패키지 이름>-upload.properties` — 실행기가 패키지 이름으로 찾아 `ANDROID_UPLOAD_KEY_PROPERTIES`로 넣는다)을 `store-release`가 빌드 때만 프로젝트로 연결한다.
 - **환경은 2단이다** — Firebase 개발용(`{{폴더 이름}}-dev`)·실서비스용(`{{폴더 이름}}-prod`) 두 프로젝트다. Firebase 에뮬레이터(내 컴퓨터에서 Firebase를 흉내 내는 도구)는 개발에 쓰지 않고, 개발 중에도 클라우드의 개발용 프로젝트에 붙는다. 예외는 하나 — 보안 규칙 테스트만 GitHub Actions(CI) 안에서 에뮬레이터를 잠깐 띄운다. 두 프로젝트는 같은 구글 클라우드 조직·같은 리전(`asia-northeast3`)에 있고, 앱은 flavor(같은 코드로 설정만 다른 앱 두 벌을 빌드하는 장치) `dev`·`prod`로 어느 쪽에 붙을지 정한다.
 - **키 파일·비밀번호는 평문으로 적지 않는다** — 워크플로 파일·주석·문서·커밋에 `storePassword=`·`keyPassword=`·`-----BEGIN PRIVATE KEY-----`·`"private_key":` 같은 줄을 쓰지 않는다. 감시 훅이 커밋 때 이런 줄을 찾아 막는다.
 
