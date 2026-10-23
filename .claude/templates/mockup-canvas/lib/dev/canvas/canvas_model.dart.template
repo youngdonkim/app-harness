@@ -52,6 +52,26 @@ String devStateLabel(DevState? state) => switch (state) {
   DevState.forbidden => '권한없음',
 };
 
+/// 비교안 줄의 처지 — 창 이름에 붙어, 사람이 캔버스에서 「어느 창이 지금 앱이고 어느 창이 비교안인가」를 읽는다.
+/// 판을 고르면 목록 손 부분(screens.dart)에서 이 값만 바꾼다. 판 이름(label)은 그대로 두니 창 열쇠·골든 그림 이름·코멘트가 바뀌지 않는다.
+enum DraftPick {
+  /// 고르기 전 — 「{판} · 비교안」
+  open('비교안'),
+
+  /// 고른 판 — 「{판} · 고름」. 그 판이 본 화면 자리로 옮겨 가면 builder·theme·path를 지워 지금 앱을 띄운다
+  picked('고름'),
+
+  /// 고르지 않은 판 — 「{판} · 고르지 않음」. 3단계 `화면 대조 끝:` 때 고른 판 줄과 함께 지운다
+  notPicked('고르지 않음'),
+
+  /// 비교안이 아니라 지금 앱의 다른 모습(2-4 공간을 쓰기로 정한 뒤 남기는 가까이·많을 때 줄) — 「지금 앱 · {판}」
+  app('지금 앱');
+
+  const DraftPick(this.tag);
+
+  final String tag;
+}
+
 /// 비교안 한 판 — 원래 화면 아래에 판마다 줄을 지어 놓인다.
 ///
 /// [builder]·[path]는 많아야 하나다. 둘 다 없으면 원래 화면을 [theme]으로 띄운다. [theme]은 어느 쪽과도 함께 쓸 수 있다.
@@ -60,6 +80,7 @@ String devStateLabel(DevState? state) => switch (state) {
 /// - [path] — 라우터에 등록한 다른 경로를 띄운다
 ///
 /// 머무는 공간(2-4)은 [focus]·[many]로 같은 화면의 「가까이」·「많을 때」 창을 더한다 — 창 열쇠에 붙어 그림 파일이 겹치지 않는다.
+/// [pick]은 창 이름에만 붙는다(고르기 전 · 고름 · 고르지 않음 · 지금 앱).
 class CanvasDraft {
   const CanvasDraft({
     required this.label,
@@ -69,6 +90,7 @@ class CanvasDraft {
     this.states,
     this.focus,
     this.many = false,
+    this.pick = DraftPick.open,
   });
 
   final String label;
@@ -84,6 +106,9 @@ class CanvasDraft {
 
   /// 데이터가 많을 때 모습 — 창에 devManyProvider로 들어간다
   final bool many;
+
+  /// 이 줄의 처지 — 창 이름 끝(지금 앱이면 앞)에 붙는다
+  final DraftPick pick;
 }
 
 /// 캔버스에 띄울 화면 하나.
@@ -292,12 +317,17 @@ class CanvasFrame {
     return out;
   }
 
-  /// 창 이름 — 「보통 폰 · 빈 상태」, 비교안이면 앞에 판 이름
-  String get label => [
-    if (draft != null) draft!.label,
-    viewport.label,
-    devStateLabel(state),
-  ].join(' · ');
+  /// 창 이름 — 원래 화면은 「지금 앱 · 보통 폰 · 빈 상태」, 비교안은 「B판 · 비교안 · 보통 폰 · 기본」
+  /// (고른 뒤 「· 고름」·「· 고르지 않음」, 지금 앱의 다른 모습이면 「지금 앱 · {판}」 — [DraftPick])
+  String get label {
+    final d = draft;
+    final head = d == null
+        ? [DraftPick.app.tag]
+        : d.pick == DraftPick.app
+        ? [d.pick.tag, d.label]
+        : [d.label, d.pick.tag];
+    return [...head, viewport.label, devStateLabel(state)].join(' · ');
+  }
 
   static String _slug(String text) {
     final slug = text

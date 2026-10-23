@@ -233,6 +233,7 @@ AI는 `fvm flutter devices`로 폰이 보이는지 확인합니다. 폰 준비�
 1. **fvm 깔기** — `fvm --version`이 되면 건너뜁니다. 없으면 묻지 않고 공식 설치 방법으로 깝니다.
    - Homebrew가 있으면: `brew tap btwld/fvm && brew install btwld/fvm/fvm`
    - Homebrew가 없거나 위 명령이 실패하면: `curl -fsSL https://fvm.app/install.sh | bash`
+   - 공식 설치 스크립트로 깔았으면 `~/fvm/bin`에 생기고 명령 경로(PATH)에는 없습니다. 셸 설정 파일은 고치지 않으니, 이 프로젝트의 flutter·dart 명령은 `~/fvm/bin/fvm`처럼 전체 경로로 부르거나 명령 앞에 `PATH=$HOME/fvm/bin:$PATH`를 붙입니다. 이 사실을 `AGENTS.md` 「이 프로젝트가 쓰는 도구」의 fvm 줄과 이후 지시서에 한 줄로 넘깁니다. 빌드 잠금 스크립트(`build-lock.sh`)는 `fvm`이 명령 경로에 없으면 `~/fvm/bin/fvm`을 스스로 찾아 씁니다. 사람에게는 `~/.zshrc`에 `export PATH="$HOME/fvm/bin:$PATH"`를 넣으면 터미널에서도 `fvm`이 된다고 안내합니다.
    - 같은 실패가 두 번이면 멈추고 무엇이 실패했는지 보고합니다.
 2. **고를 판** — 지금의 Flutter stable 최신입니다. Flutter 공식 릴리스 목록으로 확인합니다.
 
@@ -301,7 +302,7 @@ AI는 `fvm flutter devices`로 폰이 보이는지 확인합니다. 폰 준비�
    fvm flutter pub add dev:riverpod_lint
    ```
 
-   `riverpod_lint`를 켜는 법(분석기에 붙이는 설정)은 판마다 바뀌어 왔으니 Riverpod 공식 문서(riverpod.dev)의 설치 안내대로 하고, `fvm flutter analyze` 말고 따로 돌려야 하는 명령이 생기면 ADR과 보고에 적습니다. `flutter_lints`는 `flutter create`가 이미 넣습니다.
+   `riverpod_lint`를 켜는 법(분석기에 붙이는 설정)은 판마다 바뀌어 왔으니 Riverpod 공식 문서(riverpod.dev)의 설치 안내대로 합니다. 안내대로 `analysis_options.yaml`의 `plugins:`에 붙이면 그 린트는 `fvm flutter analyze`에서는 돌지 않고 `fvm dart analyze`에서만 돕니다(2026-10 실측, Flutter 3.47) — 그래서 이 하네스의 모든 분석 자리는 두 명령을 함께 돌립니다. 두 명령 말고 따로 돌려야 하는 명령이 또 생기면 ADR과 보고에 적습니다. `flutter_lints`는 `flutter create`가 이미 넣습니다.
 3. **상태 흉내 파일 → `pubspec.yaml`·`analysis_options.yaml` → 안드로이드 flavor → 안드로이드 서명** — 서명은 서명 틀 `README.md`의 「넣는 순서」입니다. 업로드 키는 지금 만들지 않습니다 — 키가 없으면 개발용 서명으로 빌드되고, 3단계 배포 전에 만듭니다.
 4. **iOS flavor** — `ruby tool/ios_flavors.rb <패키지 이름> <서비스 이름>`. xcodeproj가 없으면 §2.1 표대로 깝니다.
 5. **만들고 검사합니다** — 틀 `README.md` §3 ⑩의 명령 전부. iOS 빌드는 Xcode가, 안드로이드 빌드는 Android SDK가 있어야 하니, 없으면 그 빌드만 「남은 빌드」로 보고합니다.
@@ -355,7 +356,7 @@ AI는 `fvm flutter devices`로 폰이 보이는지 확인합니다. 폰 준비�
    - 서체를 지금 넣는 까닭이 하나 더 있습니다. 골든 테스트(§2.6) 안에는 폰의 기본 한글 서체가 없어서, 테마가 앱에 넣은 서체를 가리키지 않으면 한글이 네모 상자로 찍힙니다.
    - 움직임 기본 값도 1층에 자리만 잡습니다. 값은 3단계 모션 다듬기 절이 브리프 「8」로 정합니다.
 2. **2층** (`semantic.dart` — 역할 이름) — Material `ColorScheme` 이름과 우리 확장 일곱 개를 1층 상수로 채웁니다.
-3. **테마 조립과 접근 확장** (`theme.dart`·`tokens.dart`·`design.dart`) — 2층으로 `ThemeData`를 만들고, 화면이 값을 꺼내는 길을 `context.colors`·`context.space`·`context.text` 같은 이름 하나로 만듭니다. 그다음 앱 뼈대의 `lib/app/app.dart`에 `theme: buildAppTheme(AppTokens.light)`를 잇습니다(§2.3 6번).
+3. **테마 조립과 접근 확장** (`theme.dart`·`tokens.dart`·`design.dart`) — 2층으로 `ThemeData`를 만들고, 화면이 값을 꺼내는 길을 `context.colors`·`context.space`·`context.text` 같은 이름 하나로 만듭니다. 그다음 앱 뼈대의 `lib/app/app.dart`에 `theme: buildAppTheme(AppTokens.light)`를 잇습니다(§2.3 6번). `test/app/router_test.dart`의 `_testApp`에 주석으로 둔 `theme:` 줄도 함께 풉니다 — 셸이 테마를 읽기 시작해도 라우터 테스트가 깨지지 않게 하려는 것입니다.
 4. **셸** (`lib/app/shell.dart` — 모든 화면에 공통으로 씌우는 상단 바·하단 탭·바탕 틀) — `feature-list.md` 8절 「메뉴 구조」대로 만듭니다. 아직 없으면 브리프 「6. 주 사용 맥락」에 맞는 기본 메뉴로 만들고, 메인이 8절을 쓴 뒤 한 번 맞춥니다(메인이 직접 고치거나 같은 에이전트에 이어 맡깁니다). 셸은 상단·본문·하단 세 영역으로 시작하고, 안전 영역(`SafeArea` — 상태 표시줄·홈 표시줄 자리)을 셸이 맡습니다. 폰만 지원하니 화면 폭으로 메뉴를 바꾸는 갈래는 없습니다. 하단 탭이 있으면 go_router의 셸 경로가 이 셸을 감쌉니다. 탭의 경로는 아직 화면 목록이 없으니 임시 경로로 두고, 2-1 첫 화면 에이전트가 주소 모음 파일(`lib/app/paths.dart`)을 만들 때 셸이 그 파일을 쓰게 바꿉니다. 2-0이 경로를 지어 정하지 않습니다.
 5. **감싸개 부품·대비 테스트·글자 배율 도우미** — 2-1의 주요 화면에 꼭 필요한 감싸개(`AppButton`·`AppTextField` 등 — Material 부품을 감싸 variant와 누르는 크기를 정한 우리 부품)만 `lib/shared/components/ui/`에 만듭니다.
    - **누르는 영역은 브리프 「9. 접근성 바닥선」의 값(48dp 이상)을 감싸개와 테마에 처음부터 넣습니다.** 화면 코드에서 덮어써 맞추지 않습니다. 브리프 「4」의 「부품 모양」 행이 그보다 작은 크기를 적었으면 「9」가 이기고, 그 어긋남을 보고에 적습니다.
@@ -422,6 +423,7 @@ Dart·Flutter 팀이 낸 클로드 코드 플러그인이 있습니다. 안에 D
 - [ ] **목업 캔버스 뼈대** (§2.6) — 캔버스 틀 `README.md` §3 ①~⑦을 마쳤습니다. 「[서비스 이름] 디자인 시스템」 페이지가 캔버스 맨 끝 창에 있습니다. 캔버스 빌드의 지원 기기 값이 `1 2`, 개발용 빌드가 `1`입니다. 골든 그림을 찍었습니다.
 - [ ] **화면 밖 검사 통과** — 앱 뼈대 틀 `README.md` §3 ⑩의 명령(코드 생성·형식·분석·테스트·검사 스크립트 둘·dev·prod 안드로이드·iOS 빌드)과 캔버스 검사가 통과했습니다. 사람 몫 때문에 남은 빌드는 사람이 마친 뒤 돌려 통과했습니다. CI가 같은 검사를 돕니다.
 - [ ] **공식 플러그인** (§2.7) — 선택이라 한 줄로 안내만 했습니다.
+- [ ] **단계 이름표** — 위 항목을 다 채운 뒤 `.claude/scripts/stage-tag.sh 2-0 "2-0 개발환경 준비 끝"`을 돌렸습니다(SKILL.md §3.2 표).
 
 ## 4. 사용자 응대 톤
 

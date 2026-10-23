@@ -16,11 +16,11 @@
 //   );
 //
 //   Future<Result<List<Meeting>>> listMeetings() async {
-//     final shortcut = await devStateAnswer(
+//     final shortcut = await devStateAnswer<Result<List<Meeting>>>(
 //       _devState,
-//       empty: () => const Result.ok(<Meeting>[]),
-//       failure: (state) => Result.err(
-//         state == DevState.forbidden ? const AppError.forbidden() : const AppError.network(),
+//       empty: () => const Ok(<Meeting>[]),
+//       failure: (state) => Err(
+//         state == DevState.forbidden ? const PermissionDeniedError() : const NetworkError(),
 //       ),
 //     );
 //     if (shortcut != null) return shortcut;

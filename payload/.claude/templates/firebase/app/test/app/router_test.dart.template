@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:<앱>/app/router.dart';
 import 'package:<앱>/core/dev_state/dev_state.dart';
 import 'package:<앱>/dev/dev_route_state.dart';
+import 'package:<앱>/l10n/app_localizations.dart';
 
 /// 화면 목록(`feature-list.md` 6절)의 「주소」 칸 경로를 전부 적습니다 —
 /// 3단계에서 화면을 더할 때마다 한 줄씩 늘립니다. 값이 달라지는 자리(`:id`)는
@@ -13,6 +14,17 @@ import 'package:<앱>/dev/dev_route_state.dart';
 const screenPaths = <String>[
   '/',
 ];
+
+/// 실제 앱(`app.dart`)과 같은 테마·문구 파일을 단 테스트용 앱 — 셸이 생겨 테마와 문구를
+/// 읽기 시작해도 깨지지 않게 합니다. 테마 줄은 디자인 시스템(`lib/core/design/`)을 들인 뒤
+/// 주석을 풀고 `semantic.dart`·`theme.dart`를 가져옵니다(`app.dart`의 `theme:` 줄과 같은 값).
+Widget _testApp(GoRouter router) => MaterialApp.router(
+  routerConfig: router,
+  // theme: buildAppTheme(AppTokens.light),
+  localizationsDelegates: AppLocalizations.localizationsDelegates,
+  supportedLocales: AppLocalizations.supportedLocales,
+  locale: const Locale('ko'),
+);
 
 void main() {
   test('화면 목록의 경로마다 라우터에 맞는 길이 있다', () {
@@ -31,8 +43,8 @@ void main() {
       Row(
         textDirection: TextDirection.ltr,
         children: [
-          Expanded(child: MaterialApp.router(routerConfig: a)),
-          Expanded(child: MaterialApp.router(routerConfig: b)),
+          Expanded(child: _testApp(a)),
+          Expanded(child: _testApp(b)),
         ],
       ),
     );

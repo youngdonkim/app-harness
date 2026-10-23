@@ -609,7 +609,8 @@ class _CanvasBoardState extends State<CanvasBoard> {
               child: Text(
                 frame.label,
                 style: text.titleLarge,
-                maxLines: 1,
+                // 「대담판 (bold) · 고르지 않음 · 보통 폰 · 기본」처럼 길면 두 줄로 — 이름표 높이(_Layout.labelHeight) 안에 든다
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             ),

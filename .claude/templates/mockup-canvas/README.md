@@ -24,6 +24,7 @@
 
 - **모든 화면이 흐름 순서로 펼쳐집니다** — 왼쪽에서 오른쪽으로 화면이 흐름 순서대로 놓입니다. 한 화면의 세로줄 안에서는 위에서 아래로 기본 모양 → 상태(빈 상태·로딩·오류·권한없음) → 비교안이 줄을 짓습니다. 한 줄에는 **보통 폰(아이폰 16 폭, 390×844dp)과 작은 폰(갤럭시 S 폭, 360×780dp)** 이 나란히 섭니다. dp는 기기 화소 밀도와 상관없이 같은 크기로 보이게 하는 Flutter의 길이 단위입니다.
 - **멀리서는 미리보기 그림, 가까이서는 실제 화면입니다** — 판 전체가 보이게 줄여 놓으면 창마다 미리보기 그림(§9의 골든 그림)이 놓이고, 그림이 아직 없으면 화면 이름 카드가 놓입니다. 확대해서 배율이 0.3 이상이 되면 화면에 보이는 창부터 실제 앱 화면으로 바뀝니다(한 번에 8개까지). 실제 화면은 앱 코드 그대로라 눌러 보고 옮겨 다닐 수 있습니다.
+- **창 이름으로 지금 앱과 비교안을 가릅니다** — 원래 화면 창은 이름 앞에 「지금 앱」이 붙습니다(예: 「지금 앱 · 보통 폰 · 기본」). 비교안 창은 판 이름 뒤에 처지가 붙습니다 — 고르기 전 「· 비교안」, 고른 뒤 「· 고름」·「· 고르지 않음」(예: 「대담판 (bold) · 고르지 않음 · 보통 폰 · 기본」). 판 이름표가 붙은 창을 「진짜 앱」으로 읽지 않게 하려는 것입니다(§5 `pick`).
 - **크게 보기** — 창 이름 옆 「크게」를 누르거나 이름 카드를 누르면 그 화면 하나를 판 가득 띄웁니다. 보통 폰·작은 폰을 바꿔 볼 수 있습니다.
 - **글자 배율** — 오른쪽 아래 「글자 1.0 / 1.3 / 2.0」으로 폰 설정의 「글자 크기」를 흉내 냅니다. 큰 글자에서 넘치는 곳을 눈으로 찾을 때 씁니다.
 - **흐름 묶음 고르기** — 왼쪽 목록에서 흐름 묶음(「역할: 흐름」 꼴의 이름) 하나만 골라 보거나 전체를 봅니다.
@@ -87,7 +88,7 @@ GoRouter createAppRouter({String initialLocation = '/'}) {
   - 라우터는 셸의 각 가지(`StatefulShellBranch`)를 만들 때 `devBranchRoutes[탭 이름]`을 그 가지의 `routes` 끝에 펼쳐 넣습니다. 인자가 비면 아무 일도 안 합니다.
   - 경로 목록(`List<RouteBase>`)은 `lib/dev/drafts/dev_routes.dart` 같은 개발용 파일에 두고, `main_canvas.dart`의 `createRouter`와 `main_dev.dart`만 `createAppRouter(devBranchRoutes: …)`로 넘깁니다. **`main_prod.dart`는 이 인자를 넘기지 않습니다.**
   - 비교안을 고르거나 지울 때는 `dev_routes.dart`와 두 진입점의 넘기는 줄도 함께 지웁니다.
-  - **앱 뼈대 틀에 이 자리가 있습니다** — `.claude/templates/firebase/app/lib/app/router.dart.template`의 `createAppRouter`가 두 인자를 받고, 셸 가지를 만들 때 `branchRoutes('탭 이름', [...], devBranchRoutes)`로 감쌉니다. 개발용 진입점 `main_dev.dart` 틀에는 넘기는 줄이 주석으로 있습니다. 옛 틀로 만든 프로젝트라 라우터에 이 자리가 없으면 2-3에서는 라우터를 고치지 않습니다 — 비교안은 `CanvasDraft(builder:)`로 띄웁니다(하단 탭 없이 뜹니다).
+  - **앱 뼈대 틀에 이 자리가 있습니다** — `.claude/templates/firebase/app/lib/app/router.dart.template`의 `createAppRouter`가 두 인자를 받고, 셸 가지를 만들 때 `routes: [..., ...?devBranchRoutes['탭 이름']]`처럼 끝에 펼쳐 넣습니다. 개발용 진입점 `main_dev.dart` 틀에는 넘기는 줄이 주석으로 있습니다. 옛 틀로 만든 프로젝트라 라우터에 이 자리가 없으면 2-3에서는 라우터를 고치지 않습니다 — 비교안은 `CanvasDraft(builder:)`로 띄웁니다(하단 탭 없이 뜹니다).
 - **내비게이터 열쇠(`GlobalKey`)를 파일 맨 위 전역 값으로 두지 않습니다.** 같은 열쇠는 화면에 한 번만 있을 수 있는데, 캔버스에는 라우터가 창 수만큼 동시에 떠서 「열쇠가 겹친다」는 오류가 납니다. 셸 경로(하단 탭)의 열쇠도 같습니다.
 - 라우터가 provider(앱 어디서나 꺼내 쓰는 공급자 — Riverpod의 기본 단위)를 읽어야 하면(예: 로그인 상태로 길을 돌리기), `main_canvas.dart`의 `createRouter` 한 줄에서 받은 `container`(그 창의 provider 묶음)로 읽게 바꿉니다.
 
@@ -131,7 +132,7 @@ GoRouter createAppRouter({String initialLocation = '/'}) {
 3. (2-3을 할 때만) `test/draft_checks/draft_check_test.dart.template`을 판마다 `test/draft_checks/<판>_check_test.dart`로 복사합니다. 머리 주석의 규칙(자기 판 파일만 import · `pumpAndSettle` 금지)은 지시서에도 넣습니다.
 4. 앱 테마가 앱에 넣은 한글 서체를 이름으로 가리키는지 봅니다(design-system 스킬의 서체 규칙). 테스트 안에는 폰의 기본 한글 서체가 없어서, 테마가 넣은 서체를 가리키지 않으면 한글이 「NOGLYPH」라고 적힌 네모 상자로 찍힙니다.
 
-⑧ **검사를 돌립니다** — `flutter analyze`, `flutter test --exclude-tags golden`, `dart run tool/canvas_list.dart`, `.claude/scripts/build-lock.sh flutter test --tags golden --update-goldens`. 그리고 §4대로 시뮬레이터에 띄워 앱이 뜨는지, 코멘트 서버 창에 `GET /comments` 줄이 찍히는지(`--log`로 켰을 때) 봅니다. 화면이 맞는지는 사람이 봅니다.
+⑧ **검사를 돌립니다** — `flutter analyze`, `dart analyze`(Riverpod 린트는 이쪽에서만 돕니다), `flutter test --exclude-tags golden`, `dart run tool/canvas_list.dart`, `.claude/scripts/build-lock.sh flutter test --tags golden --update-goldens`. 그리고 §4대로 시뮬레이터에 띄워 앱이 뜨는지, 코멘트 서버 창에 `GET /comments` 줄이 찍히는지(`--log`로 켰을 때) 봅니다. 화면이 맞는지는 사람이 봅니다.
 
 ## 4. 띄우기
 
@@ -268,8 +269,17 @@ final canvasExtraScreens = <CanvasScreen>[
 | `focus` | 물건 id. 그 창에 `devFocusProvider`가 이 값으로 들어가, 공간 부품이 처음부터 그 물건으로 다가간 「가까이」 모습을 그립니다 |
 | `many` | `true`면 그 창에 `devManyProvider`가 참으로 들어가, 저장·조회 코드가 예시 데이터를 늘려 「많을 때」 모습을 그립니다 |
 
+`CanvasDraft`에는 창 이름에만 쓰는 필드 `pick`(`DraftPick`)도 있습니다. 판 이름(`label`)은 고르기 전후로 그대로 두고 이 값만 바꿉니다 — 창 열쇠·골든 그림 이름·코멘트가 판 이름에 묶여 있어서입니다.
+
+| `pick` 값 | 창 이름 | 언제 |
+|---|---|---|
+| `DraftPick.open`(안 적으면 이것) | 「{판} · 비교안 · …」 | 고르기 전 |
+| `DraftPick.picked` | 「{판} · 고름 · …」 | 고른 판. 본 화면 자리로 옮긴 뒤에는 `builder`·`theme`·`path`를 지우고 `states: []`로 둡니다 — 지금 앱을 띄우는 줄이 됩니다 |
+| `DraftPick.notPicked` | 「{판} · 고르지 않음 · …」 | 고르지 않은 판. 비교안 코드는 그대로 둡니다 |
+| `DraftPick.app` | 「지금 앱 · {판} · …」 | 비교안이 아니라 지금 앱의 다른 모습 — 2-4에서 공간을 쓰기로 정한 뒤 남기는 가까이·많을 때 줄 |
+
 - **덮어쓰기는 적은 필드만 바꿉니다.** 안 적은 필드는 자동 값 그대로입니다. `states`를 적으면 자동 상태 목록을 통째로 바꿉니다.
-- **고른 뒤** — 비교안 중 하나를 고르면 그 값이나 화면을 본 화면 자리로 옮기고, `drafts`에서 그 판을 지웁니다. 고르지 않은 판은 비교안 화면을 지울 때 같이 지웁니다.
+- **고른 뒤** — 비교안 중 하나를 고르면 그 값이나 화면을 본 화면 자리로 옮깁니다. `drafts`의 판 줄은 지우지 않고 `pick`만 바꿉니다 — 고른 판은 `DraftPick.picked`(옮긴 뒤 `builder`·`theme`·`path`를 지워 지금 앱을 띄움), 나머지는 `DraftPick.notPicked`. 그래서 고른 뒤에도 한 세로줄에 「지금 앱 → {고른 판} · 고름 → {다른 판} · 고르지 않음」이 남아, 어느 판을 골랐고 무엇과 견줬는지 보입니다. 고르기 전 바탕 화면(개선·개성을 입히기 전 본 화면)은 캔버스에 남기지 않습니다 — 고를 때 본 화면 코드와 토큰을 제자리에서 바꾸기 때문입니다. 그 모습은 고르기 직전에 붙인 단계 이름표(idea-to-mvp SKILL.md §3.2의 `stage/2-2-drafts`·`stage/2-3-drafts`)로 돌아가 봅니다. 「· 고름」·「· 고르지 않음」 줄은 3단계 `화면 대조 끝:` 때 비교안 코드와 함께 지웁니다(`DraftPick.app` 줄은 남깁니다).
 - **머무는 공간의 가까이·많을 때 창** — 2-4는 공간 화면의 `drafts`에 넷을 둡니다. 공간(`states: [DevState.empty]`), 가까이 둘(`focus:`, `states: []`), 많을 때(`many: true`, `states: []`). 라벨에는 모두 영문 꼬리 `(stay)`를 붙입니다.
 
   ```dart
@@ -281,7 +291,7 @@ final canvasExtraScreens = <CanvasScreen>[
   ]),
   ```
 
-  창 열쇠는 판 부분 뒤에 `-focus-{물건 id}`·`-many`가 붙어 `S-03__draft-stay__…`·`S-03__draft-stay-focus-shelf__…`·`S-03__draft-stay-many__…`가 됩니다 — 라벨의 한글이 빠져도 그림 파일이 서로 덮이지 않습니다. 그래서 물건 id는 영문·숫자로 짓습니다. 셸 안 화면이면 `builder` 대신 개발용 경로를 `path`로 줍니다(2-3과 같음). 공간을 쓰기로 정한 뒤에는 공간 줄을 지우고, 가까이·많을 때 줄은 `builder`·`theme`을 지워 본 화면을 띄우는 줄로 남깁니다.
+  창 열쇠는 판 부분 뒤에 `-focus-{물건 id}`·`-many`가 붙어 `S-03__draft-stay__…`·`S-03__draft-stay-focus-shelf__…`·`S-03__draft-stay-many__…`가 됩니다 — 라벨의 한글이 빠져도 그림 파일이 서로 덮이지 않습니다. 그래서 물건 id는 영문·숫자로 짓습니다. 셸 안 화면이면 `builder` 대신 개발용 경로를 `path`로 줍니다(2-3과 같음). 공간을 쓰기로 정한 뒤에는 공간 줄을 지우고, 가까이·많을 때 줄은 `builder`·`theme`을 지우고 `pick: DraftPick.app`을 붙여 본 화면을 띄우는 줄로 남깁니다.
 - 캔버스는 목록을 창 목록(화면 × 폰 크기 × 상태 × 판)으로 펴서 씁니다(`canvas_model.dart`의 `buildFrames`). 창마다 열쇠가 붙습니다 — 예: `S-02__main__phone__empty`, 비교안이면 `S-02__draft-B__small__base`. 영문·숫자·`-`·`_`만 쓰므로 판 이름의 한글은 열쇠에서 빠집니다. 그래서 한글만 다른 판 이름은 열쇠가 겹칩니다. 2-3 비교안 라벨은 영문 꼬리를 붙여 `'대담판 (bold)'`·`'혁신판 (innov)'`·`'파격판 (leap)'`로 씁니다 — 열쇠는 `S-02__draft-bold__phone__base`·`…__draft-innov__…`·`…__draft-leap__…`가 되고, 이 `draft-bold` 같은 말이 창 열쇠의 판 부분입니다(골든 그림 이름·코멘트·`--name` 모두 이 열쇠).
 
 ## 6. 상태 흉내와 가짜 저장소
@@ -303,11 +313,11 @@ final meetingRepositoryProvider = Provider<MeetingRepository>(
 );
 
 Future<Result<List<Meeting>>> listMeetings() async {
-  final shortcut = await devStateAnswer(
+  final shortcut = await devStateAnswer<Result<List<Meeting>>>(
     _devState,
-    empty: () => const Result.ok(<Meeting>[]),
-    failure: (state) => Result.err(
-      state == DevState.forbidden ? const AppError.forbidden() : const AppError.network(),
+    empty: () => const Ok(<Meeting>[]),
+    failure: (state) => Err(
+      state == DevState.forbidden ? const PermissionDeniedError() : const NetworkError(),
     ),
   );
   if (shortcut != null) return shortcut;
@@ -323,6 +333,7 @@ Future<Result<List<Meeting>>> listMeetings() async {
 
 - 흐름마다 `lib/dev/fakes/fake_<흐름>_repository.dart`를 두고, 진짜 저장소와 같은 인터페이스를 구현합니다. 견본 데이터는 `lib/features/<흐름>/data/`의 견본 목록에 두고, 가짜 저장소가 그것을 가져다 씁니다. 견본 목록을 `lib/dev/`에 두면 실서비스 진입점이 `lib/dev/`를 부르게 되므로 안 됩니다(디자인 규칙 검사 13번). 위젯 테스트도 같은 가짜를 씁니다.
 - 가짜도 `devStateAnswer`를 거칩니다. 그래야 캔버스의 상태 창이 진짜 저장소와 같은 길로 그려집니다.
+- 시간이 걸리는 흉내(진행 상황을 흘려 주는 `Stream` 등)는 `async*` 안 `Future.delayed`로 짓지 않습니다 — 화면이 닫혀도 타이머가 남아 위젯 테스트·골든이 「A Timer is still pending」으로 실패합니다. `Timer`와 `StreamController(onCancel: () => timer?.cancel())`로 짓습니다.
 - `lib/dev/fakes/canvas_overrides.dart`의 `canvasFakeOverrides`에 한 줄씩 등록합니다.
 
   ```dart
@@ -424,7 +435,7 @@ AI가 화면이 맞는지 판정하는 수단이 아닙니다. 그림이 맞는�
 - **이 맥에서만 돌립니다** — 운영체제마다 글자를 그리는 방식이 달라, 다른 컴퓨터에서 찍으면 그림이 어긋납니다. CI는 `--exclude-tags golden`으로 이 테스트를 뺍니다. 기준 그림은 git에 올립니다.
 - **화면을 바꾼 뒤에 다시 찍습니다** — 목록 만들기를 다시 돌렸을 때(창이 늘거나 줄었을 때)도 다시 찍습니다. 목록에서 빠진 창의 옛 그림은 저절로 지워지지 않으니 `test/goldens/canvas/`에서 지웁니다.
 
-**비교안 그림을 다시 찍기** — 비교안 창의 열쇠는 `draft-bold`처럼 판 이름이 들어 있어, `--name`으로 판 하나만 찍을 수 있습니다. 고른 판을 본 화면 자리로 옮긴 뒤에는 그 판의 옛 그림(`test/goldens/canvas/*__draft-<판>__*.png`)을 지우고 본 화면 그림을 다시 찍습니다.
+**비교안 그림을 다시 찍기** — 비교안 창의 열쇠는 `draft-bold`처럼 판 이름이 들어 있어, `--name`으로 판 하나만 찍을 수 있습니다. `pick`을 바꿔도 열쇠는 그대로입니다. 고른 판을 본 화면 자리로 옮긴 뒤에는 본 화면과 그 판 줄(이제 지금 앱을 띄움)의 그림을 다시 찍습니다 — 고른 판 줄을 `states: []`로 줄였으면 목록에서 빠진 상태 창의 옛 그림(`test/goldens/canvas/*__draft-<판>__*.png` 중 `__base` 아닌 것)은 지웁니다.
 
 ```bash
 .claude/scripts/build-lock.sh flutter test --tags golden --update-goldens --name '__draft-bold__' test/goldens/canvas_golden_test.dart   # 대담판 창만

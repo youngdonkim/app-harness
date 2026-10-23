@@ -182,4 +182,4 @@ success: Color.lerp(success, other.success, t)!,
 
 ### 5.5 검증
 
-`flutter analyze`와 `flutter test`가 둘 다 통과하는지 확인한다 — 대비 테스트(색을 더했을 때)와 글자 배율 테스트가 여기서 돈다. 둘 중 하나만 통과한 것을 「통과」로 보고하지 않는다(`flutter test`는 테스트가 불러오지 않은 파일의 오류를 못 잡는다). 실제 명령 모양(판 고정 도구를 앞에 붙이는지 등)은 프로젝트 AGENTS.md를 따른다.
+`flutter analyze`·`dart analyze`(Riverpod 린트는 이쪽에서만 돈다)·`flutter test`가 모두 통과하는지 확인한다 — 대비 테스트(색을 더했을 때)와 글자 배율 테스트가 여기서 돈다. 하나라도 빠진 것을 「통과」로 보고하지 않는다(`flutter test`는 테스트가 불러오지 않은 파일의 오류를 못 잡는다). 실제 명령 모양(판 고정 도구를 앞에 붙이는지 등)은 프로젝트 AGENTS.md를 따른다.

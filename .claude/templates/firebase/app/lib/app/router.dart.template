@@ -17,7 +17,7 @@ import 'package:go_router/go_router.dart';
 /// - [devRoutes]: 셸 밖 맨 위에 더할 개발용 경로(예: 디자인 시스템 페이지).
 /// - [devBranchRoutes]: 하단 탭 이름별로 그 탭 가지 안에 더할 경로
 ///   (예: `{'home': [GoRoute(path: '/dev/innov/home', …)]}`) — 2-3 비교안이
-///   하단 탭과 함께 뜨게 합니다. 가지를 만들 때 [branchRoutes]로 감쌉니다.
+///   하단 탭과 함께 뜨게 합니다. 가지를 만들 때 그 가지 경로 끝에 펼쳐 넣습니다.
 GoRouter createAppRouter({
   String initialLocation = '/',
   List<RouteBase> devRoutes = const [],
@@ -30,12 +30,12 @@ GoRouter createAppRouter({
     routes: [
       // 첫 화면 자리 — 2-0이 실제 화면으로 바꿉니다.
       GoRoute(path: '/', builder: (context, state) => const SizedBox.shrink()),
-      // 하단 탭 셸을 만들면 가지마다 탭 이름으로 branchRoutes를 거칩니다 — 예:
+      // 하단 탭 셸을 만들면 가지마다 탭 이름으로 개발용 경로를 끝에 펼쳐 넣습니다 — 예:
       // StatefulShellRoute.indexedStack(
       //   builder: (context, state, shell) => AppShell(shell: shell),
       //   branches: [
       //     StatefulShellBranch(
-      //       routes: branchRoutes('home', [GoRoute(path: '/home', builder: …)], devBranchRoutes),
+      //       routes: [GoRoute(path: '/home', builder: …), ...?devBranchRoutes['home']],
       //     ),
       //   ],
       // ),
@@ -43,11 +43,3 @@ GoRouter createAppRouter({
     ],
   );
 }
-
-/// 하단 탭 가지 하나의 경로 목록 — 그 탭 이름([tab])으로 넘어온 개발용 경로를
-/// 끝에 붙입니다. 개발용 경로가 없으면 [routes] 그대로입니다.
-List<RouteBase> branchRoutes(
-  String tab,
-  List<RouteBase> routes,
-  Map<String, List<RouteBase>> devBranchRoutes,
-) => [...routes, ...?devBranchRoutes[tab]];

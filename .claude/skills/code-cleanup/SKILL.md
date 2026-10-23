@@ -90,7 +90,7 @@ base=$(git log origin/main..HEAD --no-merges --format='%H %s' | grep -E '^[0-9a-
 
 <example>
 <direction>
-아래 항목만 반영해라. 화면에 보이는 것과 동작(문구·배치·순서·주소·저장되는 값)은 바꾸지 않는다. 반영 뒤 화면을 열지 않는 검사를 돌리고 결과를 보고한다 — `fvm flutter analyze`와 `fvm flutter test --exclude-tags golden`은 언제나 둘 다(하나만 통과한 것은 통과로 보지 않는다), 화면 코드를 고쳤으면 `bash .claude/scripts/design-check.sh`의 새로 걸린 줄(반영 전에는 없던 줄)도 보고하고, `functions/src/`를 고쳤으면 `functions/`에서 `npm run lint && npm run build && npm test`도 돌린다(node 명령은 AGENTS.md대로 `fnm exec --using=.nvmrc --`를 앞에 붙인다). 생성 파일을 건드렸으면 `fvm dart run build_runner build`로 다시 만들어 차이가 없게 한다.
+아래 항목만 반영해라. 화면에 보이는 것과 동작(문구·배치·순서·주소·저장되는 값)은 바꾸지 않는다. 반영 뒤 화면을 열지 않는 검사를 돌리고 결과를 보고한다 — `fvm flutter analyze`·`fvm dart analyze`(Riverpod 린트는 이쪽에서만 돈다)·`fvm flutter test --exclude-tags golden`은 언제나 셋 다(하나라도 빠진 것은 통과로 보지 않는다), 화면 코드를 고쳤으면 `bash .claude/scripts/design-check.sh`의 새로 걸린 줄(반영 전에는 없던 줄)도 보고하고, `functions/src/`를 고쳤으면 `functions/`에서 `npm run lint && npm run build && npm test`도 돌린다(node 명령은 AGENTS.md대로 `fnm exec --using=.nvmrc --`를 앞에 붙인다). 생성 파일을 건드렸으면 `fvm dart run build_runner build`로 다시 만들어 차이가 없게 한다.
 </direction>
 <data>
 <4에서 남긴 항목>
@@ -119,6 +119,7 @@ base=$(git log origin/main..HEAD --no-merges --format='%H %s' | grep -E '^[0-9a-
 
 2의 목록이 크면(파일 40개 넘게, 바뀐 줄 수천 줄) 한 턴에 끝내려 하지 않는다. idea-to-mvp의 3단계 끝 정리는 2·3단계 코드 전체가 대상이라 대개 여기에 든다 — 그때는 아래 묶음 나누기가 기본이다.
 
+- **비교안 전용 파일은 대상에서 뺀다** — `lib/core/design/drafts.dart`·`lib/core/design/drafts/`·`lib/dev/drafts/`·`test/draft_checks/`(2-2·2-3이 비교안만을 위해 만든 자리)는 3단계에서 지워질 파일이라 검토하지 않는다. 2단계 끝에서 불려도 같다.
 - **파일이 40개를 넘으면 검토를 폴더 묶음으로 나눈다** — 한 묶음 20~30개, 묶음마다 검토 에이전트 하나, 같은 파일이 두 묶음에 들지 않게. 보고서는 메인이 합친다.
 - 검토·반영 에이전트를 백그라운드로 띄우고 턴을 끝내도 된다. 알림이 오면 다음 턴에 4·6을 잇는다.
 - **표시 커밋(6)이 생긴 다음 턴에 합치기(ship)로 넘어가도 된다** — done-task에서 불렸으면 그 턴에 `ship-task`를 부른다.

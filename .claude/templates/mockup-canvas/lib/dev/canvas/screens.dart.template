@@ -19,6 +19,12 @@ final canvasOverrides = <String, CanvasOverride>{
   //   CanvasDraft(label: 'B판', theme: buildAppTheme(draftHomeB)),
   //   CanvasDraft(label: 'C판', builder: (_) => const HomeDraftC(), states: [DevState.empty]),
   // ]),
+  // 판을 고른 뒤 — 줄은 지우지 않고 pick만 바꾼다(창 이름에 「· 고름」·「· 고르지 않음」이 붙는다).
+  //   고른 판은 본 화면 자리로 옮겨 갔으니 theme·builder·path를 지워 지금 앱을 띄운다:
+  // 'S-01': CanvasOverride(drafts: [
+  //   CanvasDraft(label: 'B판', pick: DraftPick.picked, states: []),
+  //   CanvasDraft(label: 'C판', builder: (_) => const HomeDraftC(), pick: DraftPick.notPicked),
+  // ]),
   // 화면 목록에 흐름 묶음 칸이 없어 묶음을 손으로 정할 때:
   // 'S-02': CanvasOverride(group: '처음 온 사람: 둘러보기에서 가입까지'),
   // 한 가지 폰 크기로만 볼 때:

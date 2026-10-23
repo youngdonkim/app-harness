@@ -396,7 +396,7 @@ SKILL.md §1.5의 **초안 모드** — AI가 목록을 통째로 채운 뒤 완
 | 아래에서 올라오는 판 | `AppBottomSheet` |
 | 알림 띠 | `AppSnackbar` |
 | 위젯 카드 | Material `Card`(테마로 모양이 정해짐) — 목록 항목에는 쓰지 않는다 |
-| 화면 안 탭 | Material `TabBar` (하단 탭 막대는 셸에 속한다) |
+| 화면 안 탭 | Material `TabBar` (하단 탭 막대는 셸에 속한다). `TabBar`는 탭 높이가 46dp라 48dp 바닥선에 못 미친다 — 탭 높이를 테마로 올리거나 `AppChip` 줄로 바꾼다 |
 | 정보만 보이는 태그 | `AppBadge` |
 | 아바타·로딩 뼈대 | `CircleAvatar`·로딩 뼈대 전용 부품 |
 | 셸·하단 탭·상단 바·행 목록·도메인 부품 | 전용 부품 — 여러 흐름이 쓰면 `lib/shared/components/common/`, 한 흐름만 쓰면 `lib/features/<흐름>/widgets/`. 재료는 감싸개 부품 + `context.*` 이름 |
@@ -446,7 +446,7 @@ SKILL.md §1.5의 **초안 모드** — AI가 목록을 통째로 채운 뒤 완
 - 「화면 코드는 값을 `context.*` 이름으로만 꺼낸다 — `Color(0x…)`·`Colors.*`·간격·글자 크기·둥글기·시간 숫자, `foundation.dart` 불러오기, `Theme.of(context)` 직접 쓰기 금지. 사용자에게 보이는 글자는 `.arb` 문구 파일에 넣고 꺼낸다 — `Text('…')`로 직접 쓰지 마라.」
 - 「만든 화면의 주소와 띄울 수 있는 `?state=` 값을 보고의 「화면 ID ↔ 주소」 표에 적고, 상태 표의 `O` 칸은 `?state=` 값으로 띄울 수 있게 한다. 목업 캔버스 목록 파일(`screens.generated.dart`)은 손으로 고치지 않는다 — 메인이 화면 목록을 채운 뒤 스크립트로 만든다.」
 - 「요소마다 「화면 요소 → 부품」 표로 부품·variant를 정하고, 대응 없는 요소는 전용 부품으로 만들어 부품 목록(`docs/components.md`)에 등록하며, 보고에 「화면 요소 → 부품」 표를 남겨라.」
-- 「시뮬레이터·폰·목업 캔버스를 조작해 화면을 보고 '확인 완료'라고 결론 내지 마라 — 분석(`flutter analyze`)·테스트·빌드까지만 하고 결과를 보고하라.」(예외 — 2-3 비교안·2-4 공간 자기 점검은 그 단계 지시서가 따로 연다)
+- 「시뮬레이터·폰·목업 캔버스를 조작해 화면을 보고 '확인 완료'라고 결론 내지 마라 — 분석(`fvm flutter analyze`·`fvm dart analyze`)·테스트·빌드까지만 하고 결과를 보고하라.」(예외 — 2-3 비교안·2-4 공간 자기 점검은 그 단계 지시서가 따로 연다)
 - 「프로젝트에 없는 도구를 새로 받지 마라 — `dart pub global activate`·`brew install` 금지. 줄 맞춤은 Dart 기본 `fvm dart format`만 쓴다.」 (웹 하네스 실측 2026-10-22 시험: 판 에이전트가 프로젝트에 없는 줄 맞춤 도구를 `npx`로 바깥에서 받았다 — Flutter에는 같은 길이 `dart pub global activate`다)
 - 「앱이나 코멘트 서버가 필요하면 이미 떠 있는 것을 쓰고, 네가 띄운 프로세스만 끈다.」
 - 「화면마다 글자 배율 2.0에서 그리는 위젯 테스트를 하나 두고 넘침 오류 0을 확인하라.」
@@ -539,7 +539,7 @@ SKILL.md §1.5의 **초안 모드** — AI가 목록을 통째로 채운 뒤 완
    아무것도 찍히지 않으면 통과다.
 
    **한 크기로만 보여 줄 화면** — 그 화면이 카메라처럼 작은 폰에서 따로 볼 것이 없는 일을 하면 목록 파일의 손 부분(`screens.dart`의 `canvasOverrides`)에서 그 화면 ID에 `widths: [CanvasViewport.phone]`을 넣는다. 그러면 목업 캔버스와 미리보기 그림에 작은 폰 창이 빠진다. 화면 작업 에이전트가 물어 오기 전에 메인이 이 대조 때 먼저 정한다. 기본은 두 크기 다다.
-2. **화면 밖 검사** — 코드 생성(`fvm dart run build_runner build --delete-conflicting-outputs`) → `fvm flutter analyze` → `fvm flutter test --exclude-tags golden` → 개발용 앱 빌드(`.claude/scripts/build-lock.sh fvm flutter build ios --simulator --debug --flavor dev -t lib/main_dev.dart`와 `.claude/scripts/build-lock.sh fvm flutter build apk --debug --flavor dev -t lib/main_dev.dart`)를 돌린다. 빌드 앞의 `build-lock.sh`는 맥 전체에서 무거운 빌드를 한 번에 하나만 돌리는 잠금이다 — 「다른 프로젝트가 빌드 중이라 기다립니다」가 나오면 그대로 기다린다(`AGENTS.md` 「검증」). 그리고 3단계 배포 전 디자인 규칙 검사를 `bash .claude/scripts/design-check.sh --only 1,2,7,10,16`으로 미리 한 번 돌린다. 1·2·7·16번(색·크기 숫자 직접 쓰기 · 1층 파일 불러오기 · 테마 직접 읽기 · 화면에 글자 직접 쓰기)은 0건이어야 하고, 10번(화면마다 강조색 주 버튼이 하나인가)은 1개가 아닌 화면이 모두 화면 목록 「주 행동」 칸으로 설명되어야 한다. 2-2에서 값이 바뀔 때 화면이 따라오는지가 여기서 갈린다. 화면에서 기기 안 저장소를 직접 부르는 곳도 grep으로 센다(§2.6.2).
+2. **화면 밖 검사** — 코드 생성(`fvm dart run build_runner build --delete-conflicting-outputs`) → `fvm flutter analyze` → `fvm dart analyze`(Riverpod 린트는 이쪽에서만 돈다) → `fvm flutter test --exclude-tags golden` → 개발용 앱 빌드(`.claude/scripts/build-lock.sh fvm flutter build ios --simulator --debug --flavor dev -t lib/main_dev.dart`와 `.claude/scripts/build-lock.sh fvm flutter build apk --debug --flavor dev -t lib/main_dev.dart`)를 돌린다. 빌드 앞의 `build-lock.sh`는 맥 전체에서 무거운 빌드를 한 번에 하나만 돌리는 잠금이다 — 「다른 프로젝트가 빌드 중이라 기다립니다」가 나오면 그대로 기다린다(`AGENTS.md` 「검증」). 그리고 3단계 배포 전 디자인 규칙 검사를 `bash .claude/scripts/design-check.sh --only 1,2,7,10,16`으로 미리 한 번 돌린다. 1·2·7·16번(색·크기 숫자 직접 쓰기 · 1층 파일 불러오기 · 테마 직접 읽기 · 화면에 글자 직접 쓰기)은 0건이어야 하고, 10번(화면마다 강조색 주 버튼이 하나인가)은 1개가 아닌 화면이 모두 화면 목록 「주 행동」 칸으로 설명되어야 한다. 2-2에서 값이 바뀔 때 화면이 따라오는지가 여기서 갈린다. 화면에서 기기 안 저장소를 직접 부르는 곳도 grep으로 센다(§2.6.2).
 3. **미리보기 그림 찍기** — `.claude/scripts/build-lock.sh fvm flutter test --tags golden --update-goldens test/goldens/canvas_golden_test.dart`로 목업 캔버스가 멀리서 보여 줄 그림(골든 그림 — 테스트가 화면을 그림 파일로 찍어 둔 것)을 찍는다. 이 맥에서만 찍는다(다른 컴퓨터에서 찍으면 글자 그림이 어긋난다). 사람이 캔버스를 훑을 때 쓰는 그림이다 — AI는 이 그림을 보고 화면을 판정하지 않는다. 화면을 고친 뒤에는 고친 화면만 다시 찍는다(`--name 'S-02__'`처럼 화면 ID를 붙인다). 쓰는 법은 틀 `README.md` 「미리보기 그림(골든 그림)」.
 4. **목업 캔버스 띄우기** — 이미 떠 있으면 그것을 쓰고, 화면을 고쳤으면 `flutter run` 창에서 `r`(바뀐 코드만 바꿔 넣기)이나 `R`(앱을 처음부터 다시 시작 — 목록 파일·가짜 저장소·그림을 바꿨을 때)을 누른다. 없으면 백그라운드로 둘을 차례로 띄운다.
    - ① 코멘트 서버 `fvm dart run tool/canvas_server.dart` — 4723부터 빈 포트를 찾아 뜨고 번호를 `.dart_tool/canvas_server.port`에 적는다. 「목업 캔버스 코멘트 서버(<폴더 이름>)」 줄이 찍힌 뒤에 ②로 간다.
@@ -551,7 +551,8 @@ SKILL.md §1.5의 **초안 모드** — AI가 목록을 통째로 채운 뒤 완
        --dart-define=CANVAS_SERVER=http://127.0.0.1:$(cat .dart_tool/canvas_server.port)
      ```
 
-   - 그 시뮬레이터가 없으면 2-0 §2.4의 만들기 명령으로 먼저 만든다. 기종 이름으로 고른 시뮬레이터나 다른 프로젝트 이름의 시뮬레이터에는 띄우지 않는다.
+   - 사람이 `r`·`R`·`q`를 누를 수 있게 터미널 패널 도구(`run_in_terminal`)로 띄울 때는 시뮬레이터 이름 대신 UDID(시뮬레이터마다 붙은 고유 번호)를 `-d`에 쓴다 — 그 도구는 한글이 든 명령을 받지 않는다. UDID는 `xcrun simctl list devices | grep "<폴더 이름> 캔버스 ("`의 괄호 안 값이다(`xcrun simctl boot`도 같은 값으로).
+  - 그 시뮬레이터가 없으면 2-0 §2.4의 만들기 명령으로 먼저 만든다. 기종 이름으로 고른 시뮬레이터나 다른 프로젝트 이름의 시뮬레이터에는 띄우지 않는다.
    - 캔버스에 「다른 프로젝트의 코멘트 서버입니다」가 뜨면 캔버스가 다른 프로젝트의 서버에 붙은 것이다 — 이 프로젝트의 ①을 켜고 ②를 다시 띄운다(틀 `README.md` 「띄우기」).
    - 끝나도 사용자가 볼 것이니 끄지 않는다. AI는 시뮬레이터를 조작해 화면을 판정하지 않는다.
 
@@ -641,6 +642,8 @@ SKILL.md §1.5의 **초안 모드** — AI가 목록을 통째로 채운 뒤 완
 ### 2.8 확정 — 2-2로 넘어가기 전에
 
 사용자가 "이대로 가자"고 두 목록을 확정하면 메인이 `feature-list.md` 머리에 `확정: YYYY-MM-DD` 한 줄을 적는다 (§4.1). 이 줄이 2-1이 끝났다는 표시이고, SKILL.md §1.2 판별이 이 줄을 본다. 기능이 흔들리는 동안 디자인을 개선하면 다시 해야 하니, 2-2는 이 줄이 생긴 뒤에 시작한다.
+
+- 이 줄을 적은 뒤 단계 이름표를 붙인다 — `.claude/scripts/stage-tag.sh 2-1 "2-1 확정"` (SKILL.md §3.2 표).
 
 **정책 숫자는 이미 정한 대로 화면 문구에 바로 쓴다** — 1단계 「함께 정한 것」과 기능 목록 「3. 정책 결정」에 적힌 숫자(기간·개수·마감 시각 등)는 이미 정해진 결정이라, 화면 에이전트와 문구 검토 에이전트가 단계마다 다시 묻지 않고 그대로 화면 문구에 쓴다. 브리프 「11. 이 서비스만의 사실」의 「숫자」 행은 쓸지 말지를 가리는 곳이 아니라 사용자 확인을 받았는지만 가린다 — 확정 때 한 번, 화면에 보일 정책 숫자 중 사용자 확인을 받은 것을 「11」로 옮긴다. 아직 `가정`인 숫자도 화면에는 쓰되 화면 지시서에 「가정 값임을 보고하라」를 넣고, 사용자가 확정하면 그때 「11」로 옮긴다. 이 규칙이 없으면 같은 숫자가 화면마다 다르게 다뤄진다 — 어떤 화면은 「11」에 없다며 빼고, 어떤 화면은 그대로 쓴다.
 

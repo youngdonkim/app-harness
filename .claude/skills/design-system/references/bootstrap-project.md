@@ -284,7 +284,7 @@ class AppTokens {
           ('브랜드 면 / 바탕', brand.surface, colors.surface, 1.2),
           ('onSurface(브랜드) / 브랜드 면', brand.onSurface, brand.surface, 4.5),
           ('onSurfaceMuted(브랜드) / 브랜드 면 (면 위 회색 글자)', brand.onSurfaceMuted, brand.surface, 4.5),
-          ('onPrimary / 브랜드 면 (면 위 주 버튼)', colors.onPrimary, brand.surface, 3.0),
+          ('primary / 브랜드 면 (면 위 주 버튼 바탕)', colors.primary, brand.surface, 3.0),
         ],
       ];
 }
@@ -408,6 +408,7 @@ class AppMotion extends ThemeExtension<AppMotion> {
 
 - **화면·부품은 `context.motion.base`·`context.motion.standard`만 쓴다** — `Duration(milliseconds: 300)`·`Curves.easeOut`을 적지 않는다(디자인 규칙 검사 9번).
 - **동작 줄이기(시스템 설정에서 움직임을 줄여 달라고 켜 둔 사람)** — 화면마다 분기하지 않는다. `context.motion`이 `MediaQuery.disableAnimationsOf`를 읽어 길이를 0으로 돌려주는 한 곳에서 처리한다(검사 8번). `AnimationController`에 0 길이를 주면 바로 끝 값으로 간다. 반복 움직임(돌기·떠다니기처럼 끝없이 도는 `AnimationController.repeat`)은 길이가 0이어도 멈추지 않으니, 동작 줄이기(`MediaQuery.disableAnimationsOf`)일 때는 시작하지 않고 첫 모습으로 둔다. 시작 전 지연(`Future.delayed`·`Interval`의 시작 시점)도 0으로 한다.
+- **동작 줄이기로 길이가 0이면 `AnimatedSize`를 두지 말고 바로 끝 크기로 둔다** — 길이가 0인 `AnimatedSize`는 접기·펼치기에서 오류를 낸다. 접고 펴는 자리는 길이가 0이면 애니메이션 부품을 거치지 않고 끝 크기를 바로 그립니다.
 - **Material 부품 자체의 움직임**(화면 넘김·물결 효과)이 그 설정을 따르는지는 판마다 다를 수 있다 — 도입 때 실측하고, 따르지 않는 것이 거슬리면 `theme.dart`에서 그 부품 테마로 맞춘다.
 
 ### 1.5 대비 계산 도우미
@@ -444,7 +445,7 @@ void main() {
 ```
 
 - **어디에 쓰나** — ① 대비 테스트(위) ② 2-2 화면 개선에서 색을 바꿔 볼 때 ③ 디자인 시스템 페이지가 색 짝마다 대비 숫자를 보여 줄 때(§6.1) ④ 참고에서 뽑은 강조색을 램프에 잇는 단계를 고를 때([reference-analysis.md](reference-analysis.md) §5).
-- **짝 목록(`contrastPairs`)이 정본이다** — 새 `on` 짝을 더하면 목록에도 한 줄 더한다. 목록에 없는 짝은 아무도 재지 않는다. 색 짝은 `AppColors`가, 브랜드 짝(면과 바탕 1.2 · 면 위 글자 4.5 · 면 위 회색 글자 4.5 · 면 위 주 버튼 3.0)은 `AppTokens`가 묶어 낸다 — 브랜드를 아직 안 들였으면 브랜드 짝은 목록에서 빠진다. 질감·그라데이션 면은 면의 가장 나쁜 자리(가장 어둡거나 밝은 곳)의 색을 짝에 넣어 잰다.
+- **짝 목록(`contrastPairs`)이 정본이다** — 새 `on` 짝을 더하면 목록에도 한 줄 더한다. 목록에 없는 짝은 아무도 재지 않는다. 색 짝은 `AppColors`가, 브랜드 짝(면과 바탕 1.2 · 면 위 글자 4.5 · 면 위 회색 글자 4.5 · 면 위 주 버튼 3.0)은 `AppTokens`가 묶어 낸다. **면 위 주 버튼 3:1은 버튼 바탕(`primary`)과 면의 대비로 한 가지만 잰다** — 버튼 글자(`onPrimary`)와 면이 아니다(버튼 글자와 버튼 바탕은 위 `onPrimary / primary` 4.5 줄이 잰다). 대비 테스트를 따로 짜는 에이전트도 같은 기준으로 짠다 — 브랜드를 아직 안 들였으면 브랜드 짝은 목록에서 빠진다. 질감·그라데이션 면은 면의 가장 나쁜 자리(가장 어둡거나 밝은 곳)의 색을 짝에 넣어 잰다.
 - **다크 모드를 만들면** 같은 테스트를 다크 묶음(`AppTokens.dark`)에도 돌린다.
 
 ### 1.6 감싸개 부품과 누르는 크기

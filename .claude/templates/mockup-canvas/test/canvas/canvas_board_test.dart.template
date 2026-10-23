@@ -110,7 +110,7 @@ void main() {
 
   testWidgets('창마다 다른 상태가 같은 저장·조회 길로 그려진다', (tester) async {
     await pumpCanvas(tester, const [hello]);
-    final labels = ['보통 폰 · 빈 상태', '보통 폰 · 오류'];
+    final labels = ['지금 앱 · 보통 폰 · 빈 상태', '지금 앱 · 보통 폰 · 오류'];
     final expected = ['비어 있음', '실패: error'];
     for (var i = 0; i < labels.length; i++) {
       final row = find

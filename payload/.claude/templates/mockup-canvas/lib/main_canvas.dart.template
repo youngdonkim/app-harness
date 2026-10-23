@@ -39,5 +39,7 @@ CanvasConfig canvasConfig() => CanvasConfig(
 );
 
 void main() {
+  // 캔버스는 창마다 provider 범위(ProviderScope)를 따로 만든다 — 이 줄에서 riverpod_lint가 범위가 없다고 경고하니 일부러 끈다.
+  // ignore: riverpod_lint/missing_provider_scope
   runApp(CanvasApp(config: canvasConfig()));
 }
