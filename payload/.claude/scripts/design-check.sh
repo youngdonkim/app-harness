@@ -382,6 +382,7 @@ c17() {
 # 세 갈래를 가른다:
 #   ① HEAVY_PKGS 줄 없음(또는 값이 비어 있음 — 비교안 단계) → 「해당 없음」 (걸린 줄로 세지 않는다)
 #   ② HEAVY_PKGS 는 있는데 HEAVY_PARTS 줄 없음 → 「목록 줄 없음」 (걸린 줄)
+#      비교안 폴더(lib/dev)에서만 쓰고 본 부품이 아직 없으면 `HEAVY_PARTS: (없음)`으로 적는다 — 빈 목록으로 읽는다
 #   ③ 두 줄이 다 있음 → 목록 밖 파일만 찍는다. 목록에 있는데 파일이 없으면 (참고)로 알린다
 c18() {
   local pkgs="${HEAVY_PKGS:-}" list="${HEAVY_PARTS:-}" haveparts=0
@@ -391,6 +392,8 @@ c18() {
     g -qE '^[[:space:]]*(-[[:space:]]+)?`?HEAVY_PARTS:' "$AGENTS_MD" && haveparts=1
   fi
   [ -n "$list" ] && haveparts=1
+  # `HEAVY_PARTS: (없음)` — 줄은 있는 것으로 보고 빈 목록으로 읽는다(「목록에 있는데 파일이 없음: (없음)」을 내지 않게)
+  case "$list" in "(없음)"|"없음"|"-") list="" ;; esac
   # 공백으로 나눈 단어 중 패키지 이름 모양(소문자·숫자·_)만 앞에서부터 읽고, 다른 모양(괄호·설명)이 나오면 거기서 멈춘다
   local names=() n
   for n in $pkgs; do
@@ -460,6 +463,7 @@ c19() {
   [ "$havepal" = 0 ] && echo "목록 줄 없음: 팔레트 파일(${pals[*]})이 있는데 $AGENTS_MD 연결 정보에 STAY_PALETTE: 줄이 없다 — 줄을 빠뜨린 것"
   [ "$haveparts" = 0 ] && echo "목록 줄 없음: 팔레트가 있는데 $AGENTS_MD 연결 정보에 STAY_PARTS: 줄이 없다 — 줄을 빠뜨린 것"
   local parts=() p ok key alt=""
+  case "$list" in "(없음)"|"없음"|"-") list="" ;; esac   # `STAY_PARTS: (없음)` — 빈 목록으로 읽는다
   [ -n "$list" ] && read -r -a parts <<< "$list"
   if [ ${#parts[@]} -gt 0 ]; then
     for p in "${parts[@]}"; do [ -e "$p" ] || echo "  (참고) 목록에 있는데 파일이 없음: $p"; done
