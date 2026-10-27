@@ -1,4 +1,4 @@
-// 코멘트 서버 검사 — 임시 폴더에 파일을 두고 실제 HTTP로 읽고 쓴다. 미리보기 그림 내보내기,
+// 코멘트 서버 검사 — 임시 폴더에 파일을 두고 실제 HTTP로 읽고 쓴다. 미리보기 그림·지난 단계 그림 내보내기,
 // 빈 포트 찾기·포트 파일, 응답의 프로젝트 이름도 본다.
 import 'dart:convert';
 import 'dart:io';
@@ -36,6 +36,7 @@ void main() {
     server = await startCanvasServer(
       file: file,
       shots: Directory('${dir.path}/shots'),
+      stages: Directory('${dir.path}/stages'),
       port: 0,
       project: 'demo-app',
     );
@@ -50,7 +51,7 @@ void main() {
     final (created, body) = await send('POST', {
       'screenId': 'S-01',
       'url': '/meetings?state=empty',
-      'viewport': 'small',
+      'viewport': 'phone',
       'state': 'empty',
       'comment': '  빈 상태 문구가 딱딱해요 ',
     });
@@ -58,7 +59,7 @@ void main() {
     final comment = (body['comment'] as Map).cast<String, Object?>();
     expect(comment['status'], 'open');
     expect(comment['comment'], '빈 상태 문구가 딱딱해요');
-    expect(comment['viewport'], 'small');
+    expect(comment['viewport'], 'phone');
 
     expect(body['project'], 'demo-app');
 
@@ -108,6 +109,155 @@ void main() {
     expect((await getShot('S-09__main__phone__base.png')).$1, 404);
     expect((await getShot('..%2Fsecret.png')).$1, 404);
     expect((await getShot('S-01__main__phone__base.jpg')).$1, 404);
+  });
+
+  test('폰 크기는 보통 폰으로 받고, 파일에 있던 옛 작은 폰 값은 다시 써도 그대로 둔다', () async {
+    await file.parent.create(recursive: true);
+    await file.writeAsString(
+      jsonEncode([
+        {
+          'id': 'c-old',
+          'screenId': 'S-01',
+          'viewport': 'small',
+          'status': 'open',
+        },
+      ]),
+    );
+    final (_, body) = await send('POST', {
+      'screenId': 'S-02',
+      'url': '/',
+      'viewport': 'small',
+      'comment': '새 코멘트',
+    });
+    expect((body['comment'] as Map)['viewport'], 'phone');
+    await send('PATCH', {'id': 'c-old', 'status': 'done'});
+    final saved = jsonDecode(await file.readAsString()) as List;
+    expect((saved.first as Map)['viewport'], 'small');
+    expect((saved.first as Map)['status'], 'done');
+  });
+
+  Future<(int, Map<String, Object?>)> getJson(String path) async {
+    final request = await client.getUrl(
+      Uri.parse('http://127.0.0.1:${server.port}$path'),
+    );
+    final response = await request.close();
+    final text = await response.transform(utf8.decoder).join();
+    return (
+      response.statusCode,
+      (jsonDecode(text) as Map).cast<String, Object?>(),
+    );
+  }
+
+  Future<int> getStatus(String path) async {
+    final request = await client.getUrl(
+      Uri.parse('http://127.0.0.1:${server.port}$path'),
+    );
+    final response = await request.close();
+    await response.drain<void>();
+    return response.statusCode;
+  }
+
+  test('지난 단계 폴더가 없으면 빈 목록이다', () async {
+    final (status, json) = await getJson('/stages');
+    expect(status, 200);
+    expect(json['stages'], isEmpty);
+    expect(json['project'], 'demo-app');
+  });
+
+  test('지난 단계 목록 — 날짜순(같으면 이름순), stage.json이 없거나 깨지면 폴더로 채운다', () async {
+    final stages = Directory('${dir.path}/stages');
+    void stage(String name, {String? json, List<String> files = const []}) {
+      final folder = Directory('${stages.path}/$name')
+        ..createSync(recursive: true);
+      if (json != null) {
+        File('${folder.path}/stage.json').writeAsStringSync(json);
+      }
+      for (final file in files) {
+        File('${folder.path}/$file').writeAsBytesSync([1]);
+      }
+    }
+
+    String info(String name, String date) => jsonEncode({
+      'name': name,
+      'tag': 'stage/$name',
+      'desc': '$name 설명',
+      'commit': 'abc1234',
+      'date': date,
+    });
+
+    stage(
+      '2-3-drafts',
+      json: info('2-3-drafts', '2020-10-25T10:00:00+09:00'),
+      files: [
+        'S-02__main__phone__base.png',
+        'S-01__main__phone__base.png',
+        'notes.txt',
+      ],
+    );
+    stage('2-2-rules', json: info('2-2-rules', '2020-10-20T10:00:00+09:00'));
+    stage('2-2-a', json: info('2-2-a', '2020-10-20T10:00:00+09:00'));
+    stage('broken', json: '{깨짐', files: ['S-01__main__phone__base.png']);
+    stage('no-json');
+    File('${stages.path}/loose.png').writeAsBytesSync([1]);
+
+    final (status, json) = await getJson('/stages');
+    expect(status, 200);
+    final list = (json['stages'] as List).cast<Map<String, Object?>>();
+    expect(list.take(3).map((s) => s['name']), [
+      '2-2-a',
+      '2-2-rules',
+      '2-3-drafts',
+    ]);
+    // 날짜를 못 읽은 둘은 폴더 수정 시각(지금)이라 맨 뒤에 온다
+    expect(list.skip(3).map((s) => s['name']).toSet(), {'broken', 'no-json'});
+    final drafts = list[2];
+    expect(drafts['desc'], '2-3-drafts 설명');
+    expect(drafts['date'], '2020-10-25T10:00:00+09:00');
+    expect(drafts['keys'], [
+      'S-01__main__phone__base',
+      'S-02__main__phone__base',
+    ]);
+    final broken = list.firstWhere((s) => s['name'] == 'broken');
+    expect(broken['desc'], '');
+    expect(DateTime.tryParse(broken['date']! as String), isNotNull);
+    expect(broken['keys'], ['S-01__main__phone__base']);
+  });
+
+  test('지난 단계 그림은 단계 이름·창 열쇠로만 내보내고, 폴더 밖은 못 읽는다', () async {
+    final folder = Directory('${dir.path}/stages/2-3-drafts')
+      ..createSync(recursive: true);
+    File('${folder.path}/S-01__main__phone__base.png').writeAsBytesSync([4, 5]);
+    File('${dir.path}/stages/secret.png').writeAsBytesSync([9]);
+    File('${dir.path}/secret.png').writeAsBytesSync([9]);
+
+    final request = await client.getUrl(
+      Uri.parse(
+        'http://127.0.0.1:${server.port}/stages/2-3-drafts/S-01__main__phone__base.png',
+      ),
+    );
+    final response = await request.close();
+    final bytes = await response.fold<List<int>>(
+      [],
+      (all, part) => all..addAll(part),
+    );
+    expect(response.statusCode, 200);
+    expect(response.headers.contentType?.mimeType, 'image/png');
+    expect(bytes, [4, 5]);
+
+    expect(
+      await getStatus('/stages/2-3-drafts/S-09__main__phone__base.png'),
+      404,
+    );
+    expect(
+      await getStatus('/stages/2-9-none/S-01__main__phone__base.png'),
+      404,
+    );
+    expect(await getStatus('/stages/2-3-drafts/stage.json'), 404);
+    expect(await getStatus('/stages/%2E%2E/secret.png'), 404);
+    expect(await getStatus('/stages/..%2F..%2F/secret.png'), 404);
+    expect(await getStatus('/stages/2-3-drafts/..%2Fsecret.png'), 404);
+    expect(await getStatus('/stages/2-3-drafts%2F..%2F..%2F/secret.png'), 404);
+    expect(await getStatus('/stages/secret.png'), 404);
   });
 
   test('깨진 파일은 덮어쓰지 않는다', () async {

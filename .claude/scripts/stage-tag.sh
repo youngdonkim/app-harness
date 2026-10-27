@@ -22,6 +22,9 @@
 #        나중에 연결한 뒤 올리기: git push origin 'refs/tags/stage/*'
 #      - 올리기에 실패하면 로컬 태그는 남기고 원인(git 출력)을 보인 뒤 1로 끝난다.
 #
+# 화면 그림은 여기서 찍지 않는다: 이름표 올리기를 몇 분 걸리는 빌드·골든 실패에 묶지 않으려는 것이고, 1단계·2-0 이름표에는
+#   캔버스가 아직 없어 찍을 것이 없어서다. 2-로 시작하는 이름표는 끝에 stage-shots.sh 를 안내만 한다(캔버스 「단계」 보기용 그림).
+#
 # no-main-push 훅과의 관계: 이 스크립트를 부르는 명령은 git 명령이 아니라 훅이 보지 않고,
 #   안에서 하는 push는 refs/tags/… 하나만 겨냥해 main push가 아니다.
 #
@@ -88,11 +91,14 @@ if ! git tag -a "$tag" -m "${desc:-$name}"; then
 fi
 
 back="되돌아가 보기: git worktree add <폴더> ${tag}"
+shots=""
+case "$name" in 2-*) shots="캔버스 「단계」 보기용 그림: .claude/scripts/stage-shots.sh ${tag#stage/}" ;; esac
 
 # ⑤ 올리기
 if [ "$has_origin" = 0 ]; then
   echo "이름표 ${tag} 를 붙였습니다. GitHub 연결 전이라 로컬에만 남겼습니다 — 연결한 뒤 git push origin 'refs/tags/stage/*' 로 올립니다."
   echo "$back"
+  [ -n "$shots" ] && echo "$shots"
   exit 0
 fi
 
@@ -105,4 +111,5 @@ fi
 
 echo "이름표 ${tag} 를 붙여 GitHub에 올렸습니다."
 echo "$back"
+[ -n "$shots" ] && echo "$shots"
 exit 0

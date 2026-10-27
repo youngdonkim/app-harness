@@ -1,32 +1,125 @@
 // 창의 멀리서 보이는 모습 — 미리보기 그림(골든 그림)이 있으면 그 그림, 없으면 이름 카드.
+// 단계 보기의 지난 단계 그림도 여기서 받는다.
 //
 // 그림은 골든 테스트(test/goldens/canvas_golden_test.dart)가 창마다 한 장씩 찍어
 // test/goldens/canvas/<창 열쇠>.png에 둔다. 시뮬레이터 앱은 맥의 그 폴더를 직접 못 읽으므로
 // 코멘트 서버(tool/canvas_server.dart)의 GET /shots/<창 열쇠>.png로 받는다.
 // 서버가 꺼져 있거나 그 창의 그림이 아직 없으면 이름 카드를 그린다.
+// 지난 단계 그림은 .claude/scripts/stage-shots.sh가 단계 태그마다 .canvas-stages/<단계 이름>/에 찍어 두고,
+// 캔버스는 켤 때 GET /stages로 목록을 한 번 받은 뒤 GET /stages/<단계 이름>/<창 열쇠>.png로 그림을 받는다.
 //
-// 그림을 다시 찍은 뒤에는 캔버스를 R(hot restart)로 다시 시작해야 새 그림이 뜬다 — 한 번 받은 그림은 앱이 기억해 둔다.
+// 그림을 다시 찍은 뒤에는 캔버스를 R(hot restart)로 다시 시작해야 새 그림이 뜬다 — 한 번 받은 그림·목록은 앱이 기억해 둔다.
+
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import 'canvas_comments.dart' show canvasServerAddress;
+import 'canvas_comments.dart' show canvasServerAddress, canvasProjectName;
 import 'canvas_model.dart';
 
-/// CanvasConfig.thumbnail에 꽂는다(lib/main_canvas.dart).
-Widget? canvasShotThumbnail(BuildContext context, CanvasFrame frame) {
-  final card = CanvasNameCard(frame: frame);
-  return Image.network(
-    '$canvasServerAddress/shots/${frame.key}.png',
-    fit: BoxFit.cover,
-    alignment: Alignment.topCenter,
-    // 멀리서만 보는 그림이라 작게 풀어 둔다 — 창이 수십 개여도 메모리를 덜 쓴다
-    cacheWidth: (frame.viewport.size.width * 0.6).round(),
-    frameBuilder: (context, child, loaded, _) => loaded == null ? card : child,
-    errorBuilder: (context, _, _) => card,
+/// CanvasConfig.thumbnail에 꽂는다(lib/main_canvas.dart). [detail]은 그림을 창 폭의 몇 배로 풀지(shotDetailFor).
+Widget? canvasShotThumbnail(
+  BuildContext context,
+  CanvasFrame frame,
+  double detail,
+) => canvasShotImage(
+  Uri.parse('$canvasServerAddress/shots/${frame.key}.png'),
+  width: frame.viewport.size.width,
+  detail: detail,
+  placeholder: CanvasNameCard(frame: frame),
+);
+
+/// 서버의 그림 한 장 — 멀리서만 보는 그림이라 [detail]만큼 작게 풀어 둔다(창이 수십 개여도 메모리를 덜 쓴다).
+/// [detail]이 1이면 원래 크기 그대로 푼다. 배율 단계가 바뀌어 다시 받는 동안에는 앞 그림을 그대로 둔다.
+Widget canvasShotImage(
+  Uri url, {
+  required double width,
+  required double detail,
+  required Widget placeholder,
+}) => Image.network(
+  '$url',
+  fit: BoxFit.cover,
+  alignment: Alignment.topCenter,
+  cacheWidth: detail >= 1 ? null : (width * detail).round(),
+  gaplessPlayback: true,
+  frameBuilder: (context, child, loaded, _) => loaded == null
+      ? Stack(fit: StackFit.expand, children: [placeholder, child])
+      : child,
+  errorBuilder: (context, _, _) => placeholder,
+);
+
+/// 지난 단계 그림을 내주는 곳 — CanvasConfig.stages에 꽂는다
+abstract class CanvasStageSource {
+  const CanvasStageSource();
+
+  /// 지난 단계 목록 — 날짜순. 받을 수 없으면 빈 목록
+  Future<List<CanvasStage>> list();
+
+  /// [stage] 단계의 [key] 창 그림. [detail]은 [canvasShotImage]와 같다
+  Widget picture(
+    BuildContext context,
+    CanvasStage stage,
+    String key,
+    double detail,
   );
 }
 
-/// 이름 카드 — 화면 ID·화면 이름·창 이름(폰 크기·상태)
+/// 코멘트 서버에서 받는다(lib/main_canvas.dart가 꽂는다)
+class HttpCanvasStageSource extends CanvasStageSource {
+  const HttpCanvasStageSource([this.address = canvasServerAddress]);
+
+  final String address;
+
+  @override
+  Future<List<CanvasStage>> list() async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+    try {
+      final request = await client.getUrl(Uri.parse('$address/stages'));
+      final response = await request.close().timeout(
+        const Duration(seconds: 5),
+      );
+      final json = (jsonDecode(
+        await response.transform(utf8.decoder).join(),
+      ) as Map).cast<String, Object?>();
+      // 다른 프로젝트의 서버면 그 단계 그림을 이 판에 놓지 않는다
+      final server = json['project'];
+      final canvas = canvasProjectName();
+      if (response.statusCode >= 400 ||
+          (server is String &&
+              server.isNotEmpty &&
+              canvas != null &&
+              server != canvas)) {
+        return const [];
+      }
+      return [
+        for (final item in json['stages'] as List? ?? const [])
+          if (item is Map) CanvasStage.fromJson(item.cast<String, Object?>()),
+      ];
+    } catch (_) {
+      // 서버가 꺼져 있거나 옛 서버라 /stages가 없다 — 지난 단계 없이 띄운다
+      return const [];
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  @override
+  Widget picture(
+    BuildContext context,
+    CanvasStage stage,
+    String key,
+    double detail,
+  ) => canvasShotImage(
+    Uri.parse(address)
+        .replace(pathSegments: ['stages', stage.name, '$key.png']),
+    width: CanvasViewport.phone.size.width,
+    detail: detail,
+    placeholder: CanvasStageCard(stage: stage, shotKey: key),
+  );
+}
+
+/// 이름 카드 — 화면 ID·화면 이름·창 이름(판·상태)
 class CanvasNameCard extends StatelessWidget {
   const CanvasNameCard({super.key, required this.frame});
 
@@ -54,6 +147,40 @@ class CanvasNameCard extends StatelessWidget {
               style: text.titleLarge,
               textAlign: TextAlign.center,
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 지난 단계 그림을 아직 못 받았을 때의 카드 — 단계 이름·창 열쇠
+class CanvasStageCard extends StatelessWidget {
+  const CanvasStageCard({
+    super.key,
+    required this.stage,
+    required this.shotKey,
+  });
+
+  final CanvasStage stage;
+  final String shotKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              stage.name,
+              style: text.headlineMedium,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Text(shotKey, style: text.titleMedium, textAlign: TextAlign.center),
           ],
         ),
       ),

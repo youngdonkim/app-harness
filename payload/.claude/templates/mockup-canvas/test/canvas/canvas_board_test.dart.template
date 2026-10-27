@@ -1,4 +1,5 @@
-// 목업 캔버스 위젯 검사 — 판이 그려지고, 창마다 상태가 갈리고, 코멘트가 저장소에 남는지.
+// 목업 캔버스 위젯 검사 — 판이 그려지고, 창마다 상태가 갈리고, 코멘트가 저장소에 남는지,
+// 단계 보기에 지난 단계 그림이 띠로 놓이는지, 화면 밖 창을 만들지 않는지.
 // 프로젝트 화면 대신 이 파일 안의 작은 화면 둘로 시험한다(프로젝트 화면이 바뀌어도 이 검사는 그대로 돈다).
 import 'package:<앱>/core/dev_state/dev_state.dart';
 import 'package:<앱>/dev/canvas/canvas_app.dart';
@@ -6,6 +7,7 @@ import 'package:<앱>/dev/canvas/canvas_comments.dart';
 import 'package:<앱>/dev/canvas/canvas_config.dart';
 import 'package:<앱>/dev/canvas/canvas_model.dart';
 import 'package:<앱>/dev/canvas/canvas_phone.dart';
+import 'package:<앱>/dev/canvas/canvas_shots.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -50,13 +52,35 @@ GoRouter _router(ProviderContainer container, String location) => GoRouter(
   routes: [GoRoute(path: '/hello', builder: (_, _) => const _HelloScreen())],
 );
 
+/// 지난 단계 그림 자리 — 서버 대신 글자 상자를 그린다
+class _FakeStages extends CanvasStageSource {
+  const _FakeStages(this.stages);
+
+  final List<CanvasStage> stages;
+
+  @override
+  Future<List<CanvasStage>> list() async => stages;
+
+  @override
+  Widget picture(
+    BuildContext context,
+    CanvasStage stage,
+    String key,
+    double detail,
+  ) => ColoredBox(
+    color: Colors.white,
+    child: Center(child: Text('그림 ${stage.name} $key')),
+  );
+}
+
 void main() {
   late MemoryCanvasCommentStore store;
 
   Future<void> pumpCanvas(
     WidgetTester tester,
-    List<CanvasScreen> screens,
-  ) async {
+    List<CanvasScreen> screens, {
+    List<CanvasStage>? stages,
+  }) async {
     tester.view.physicalSize =
         const Size(1366, 1024) * tester.view.devicePixelRatio;
     addTearDown(tester.view.reset);
@@ -68,6 +92,7 @@ void main() {
           theme: ThemeData(useMaterial3: true),
           createRouter: _router,
           comments: store,
+          stages: stages == null ? null : _FakeStages(stages),
         ),
       ),
     );
@@ -110,7 +135,7 @@ void main() {
 
   testWidgets('창마다 다른 상태가 같은 저장·조회 길로 그려진다', (tester) async {
     await pumpCanvas(tester, const [hello]);
-    final labels = ['지금 앱 · 보통 폰 · 빈 상태', '지금 앱 · 보통 폰 · 오류'];
+    final labels = ['지금 앱 · 빈 상태', '지금 앱 · 오류'];
     final expected = ['비어 있음', '실패: error'];
     for (var i = 0; i < labels.length; i++) {
       final row = find
@@ -178,6 +203,89 @@ void main() {
     expect(saved.target.text, '견본 인사');
     expect(saved.comment, '인사를 더 친근하게');
     expect(inEnlarged(find.byType(CanvasPin)), findsOneWidget);
+    await unmount(tester);
+  });
+
+  testWidgets('단계 보기 — 지난 단계 띠 뒤에 「지금 앱」 띠, 지난 단계 창은 그림만', (tester) async {
+    await pumpCanvas(
+      tester,
+      const [hello],
+      stages: const [
+        CanvasStage(
+          name: '2-2-rules',
+          desc: '화면 규칙을 정한 때',
+          date: '2026-10-20T10:00:00+09:00',
+          keys: ['S-01__main__phone__base'],
+        ),
+      ],
+    );
+    await tester.tap(find.text('단계'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('2-2-rules'), findsWidgets); // 왼쪽 목록과 띠 머리
+    expect(find.textContaining('화면 규칙을 정한 때'), findsWidgets);
+    expect(find.text('지금 앱'), findsWidgets);
+    expect(find.text('그림 2-2-rules S-01__main__phone__base'), findsOneWidget);
+    expect(find.text('지금 앱 · 기본'), findsOneWidget);
+    expect(find.text('지금 앱 · 빈 상태'), findsNothing); // 단계 보기는 기본 모양만
+
+    // 지난 단계 창은 크게 봐도 그림뿐이고 코멘트를 달 수 없다
+    final row = find
+        .ancestor(of: find.text('원래 화면'), matching: find.byType(Row))
+        .first;
+    await tester.tap(find.descendant(of: row, matching: find.text('크게')));
+    await tester.pump();
+    expect(find.text('지난 단계 그림이라 코멘트를 달 수 없습니다.'), findsOneWidget);
+    expect(
+      inEnlarged(find.text('그림 2-2-rules S-01__main__phone__base')),
+      findsOneWidget,
+    );
+    expect(inEnlarged(find.byType(CanvasPhone)), findsNothing);
+    await tester.tap(find.byTooltip('닫기 (Esc)'));
+    await tester.pump();
+
+    // 「지금 앱」만 고르면 지난 단계 그림이 빠진다
+    await tester.tap(find.widgetWithText(ListTile, '지금 앱'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('그림 2-2-rules S-01__main__phone__base'), findsNothing);
+    expect(find.text('지금 앱 · 기본'), findsOneWidget);
+    await unmount(tester);
+  });
+
+  testWidgets('지난 단계 그림이 없으면 「지금 앱」 띠만 놓고 찍는 법을 알려 준다', (tester) async {
+    await pumpCanvas(tester, const [hello]);
+    await tester.tap(find.text('단계'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('지난 단계 그림이 없습니다.'), findsOneWidget);
+    expect(find.textContaining('stage-shots.sh'), findsOneWidget);
+    expect(find.text('지금 앱 · 기본'), findsOneWidget);
+    await unmount(tester);
+  });
+
+  testWidgets('화면 밖 창은 만들지 않는다 — 확대해 들어가면 만든 창이 준다', (tester) async {
+    final many = [
+      for (var i = 0; i < 40; i++)
+        CanvasScreen(
+          id: 'S-${i.toString().padLeft(2, '0')}',
+          name: '화면 $i',
+          group: '방문자: 인사 받기',
+          path: '/hello',
+        ),
+    ];
+    await pumpCanvas(tester, many);
+    expect(find.text('크게'), findsNWidgets(40)); // 화면에 맞추면 모두 보인다
+
+    for (var i = 0; i < 8; i++) {
+      await tester.tap(find.byTooltip('확대'));
+      await tester.pump();
+    }
+    await tester.pump();
+    final built = find.text('크게').evaluate().length;
+    expect(built, greaterThan(0));
+    expect(built, lessThan(40));
     await unmount(tester);
   });
 }
