@@ -1,24 +1,22 @@
 // 목업 캔버스의 화면 목록·창 목록·코멘트 모양.
 //
-// 창 하나 = 화면 하나 × 폰 크기 하나(보통 폰·작은 폰) × 상태 하나(기본·빈·로딩·오류·권한없음) × 판 하나(원래 화면·비교안).
+// 창 하나 = 화면 하나 × 상태 하나(기본·빈·로딩·오류·권한없음) × 판 하나(원래 화면·비교안). 폰 크기는 보통 폰 하나다.
 // 화면 목록(screens.dart)을 buildFrames가 창 목록으로 펴고, 캔버스 판(canvas_app.dart)이 그 순서대로 놓는다.
 // 창 열쇠(CanvasFrame.key)는 미리보기 그림 파일 이름에도 쓴다(.claude/templates/mockup-canvas/README.md 「미리보기 그림(골든 그림)」).
+// 단계 보기(지난 단계 그림을 단계마다 한 띠로 놓는 보기)의 배치도 여기서 정한다 — buildStageLayout.
 
 import 'package:flutter/material.dart';
 
 import '../../core/dev_state/dev_state.dart';
 
-/// 폰 크기 — 보통 폰과 작은 폰 한 쌍을 나란히 띄운다.
+/// 폰 크기 — 보통 폰(아이폰 16 폭) 하나만 띄운다.
+/// 값이 하나뿐이어도 열거형으로 둔다 — 창 열쇠의 `__phone__` 조각과 코멘트의 `viewport: 'phone'`이 이 이름에서 나온다.
+/// 좁은 폭에서 넘치는지는 캔버스 대신 넘침 검사 테스트(test/draft_checks/)가 작은 폰 폭으로 본다.
 enum CanvasViewport {
   phone(
     label: '보통 폰',
     size: Size(390, 844),
     padding: EdgeInsets.only(top: 47, bottom: 34),
-  ),
-  small(
-    label: '작은 폰',
-    size: Size(360, 780),
-    padding: EdgeInsets.only(top: 24, bottom: 16),
   );
 
   const CanvasViewport({
@@ -121,7 +119,6 @@ class CanvasScreen {
     this.builder,
     this.states = const [],
     this.guest = false,
-    this.widths = CanvasViewport.values,
     this.drafts = const [],
   }) : assert(
          path != null || builder != null,
@@ -149,9 +146,6 @@ class CanvasScreen {
   /// 「로그인 전」 모습으로 띄운다
   final bool guest;
 
-  /// 띄울 폰 크기 — 기본은 보통 폰·작은 폰 둘 다
-  final List<CanvasViewport> widths;
-
   /// 비교안 — 화면 개선(2-2)·개성 입히기(2-3) 동안만 붙인다
   final List<CanvasDraft> drafts;
 
@@ -162,7 +156,6 @@ class CanvasScreen {
     WidgetBuilder? builder,
     List<DevState>? states,
     bool? guest,
-    List<CanvasViewport>? widths,
     List<CanvasDraft>? drafts,
   }) => CanvasScreen(
     id: id,
@@ -172,7 +165,6 @@ class CanvasScreen {
     builder: builder ?? this.builder,
     states: states ?? this.states,
     guest: guest ?? this.guest,
-    widths: widths ?? this.widths,
     drafts: drafts ?? this.drafts,
   );
 }
@@ -186,7 +178,6 @@ class CanvasOverride {
     this.builder,
     this.states,
     this.guest,
-    this.widths,
     this.drafts,
     this.skip = false,
   });
@@ -197,7 +188,6 @@ class CanvasOverride {
   final WidgetBuilder? builder;
   final List<DevState>? states;
   final bool? guest;
-  final List<CanvasViewport>? widths;
   final List<CanvasDraft>? drafts;
   final bool skip;
 }
@@ -222,7 +212,6 @@ List<CanvasScreen> mergeScreens(
           builder: change.builder,
           states: change.states,
           guest: change.guest,
-          widths: change.widths,
           drafts: change.drafts,
         ),
       );
@@ -263,7 +252,7 @@ class CanvasFrame {
   /// 판에서 몇 번째 화면 세로줄인지(0부터)
   final int column;
 
-  /// 그 화면 세로줄 안에서 몇 번째 줄인지 — 기본·상태·비교안마다 한 줄
+  /// 그 화면 세로줄 안에서 몇 번째 줄인지 — 기본·상태·비교안마다 한 줄(한 줄에 창 하나)
   final int row;
 
   /// 창 열쇠 — 영문·숫자·-·_만. 예: `S-02__main__phone__empty`.
@@ -317,8 +306,9 @@ class CanvasFrame {
     return out;
   }
 
-  /// 창 이름 — 원래 화면은 「지금 앱 · 보통 폰 · 빈 상태」, 비교안은 「B판 · 비교안 · 보통 폰 · 기본」
-  /// (고른 뒤 「· 고름」·「· 고르지 않음」, 지금 앱의 다른 모습이면 「지금 앱 · {판}」 — [DraftPick])
+  /// 창 이름 — 원래 화면은 「지금 앱 · 빈 상태」, 비교안은 「B판 · 비교안 · 기본」
+  /// (고른 뒤 「· 고름」·「· 고르지 않음」, 지금 앱의 다른 모습이면 「지금 앱 · {판}」 — [DraftPick]).
+  /// 폰 크기는 하나뿐이라 이름에 넣지 않는다.
   String get label {
     final d = draft;
     final head = d == null
@@ -326,7 +316,7 @@ class CanvasFrame {
         : d.pick == DraftPick.app
         ? [d.pick.tag, d.label]
         : [d.label, d.pick.tag];
-    return [...head, viewport.label, devStateLabel(state)].join(' · ');
+    return [...head, devStateLabel(state)].join(' · ');
   }
 
   static String _slug(String text) {
@@ -342,25 +332,19 @@ List<CanvasFrame> buildFrames(List<CanvasScreen> screens) {
   final frames = <CanvasFrame>[];
   for (var column = 0; column < screens.length; column++) {
     final screen = screens[column];
-    final widths = screen.widths.isEmpty
-        ? CanvasViewport.values
-        : screen.widths;
     var row = 0;
     void add(CanvasDraft? draft, List<DevState> states) {
       for (final state in <DevState?>[null, ...states]) {
-        for (final viewport in CanvasViewport.values) {
-          if (!widths.contains(viewport)) continue;
-          frames.add(
-            CanvasFrame(
-              screen: screen,
-              draft: draft,
-              viewport: viewport,
-              state: state,
-              column: column,
-              row: row,
-            ),
-          );
-        }
+        frames.add(
+          CanvasFrame(
+            screen: screen,
+            draft: draft,
+            viewport: CanvasViewport.phone,
+            state: state,
+            column: column,
+            row: row,
+          ),
+        );
         row += 1;
       }
     }
@@ -439,7 +423,8 @@ class CanvasComment {
   /// 창이 연 경로(`?state=` 포함)
   final String url;
 
-  /// `phone`(보통 폰)·`small`(작은 폰)
+  /// `phone`(보통 폰). 폰 크기가 둘이던 때 남긴 `small`(작은 폰)처럼 지금 모르는 값도 그대로 들고 있는다 —
+  /// 파일을 다시 쓸 때 원래 값을 지우지 않게. 캔버스에서는 보통 폰 창에 꽂는다([belongsTo]).
   final String viewport;
 
   /// `empty`·`loading`·`error`·`forbidden`, 기본 모양이면 null
@@ -460,11 +445,12 @@ class CanvasComment {
 
   bool get isOpen => status != 'done';
 
-  /// 이 코멘트가 [frame] 창에 꽂히나
+  /// 이 코멘트가 [frame] 창에 꽂히나 — 모르는 폰 크기(옛 `small`)는 보통 폰으로 친다
   bool belongsTo(CanvasFrame frame) =>
       screenId == frame.screen.id &&
       draft == frame.draft?.label &&
-      viewport == frame.viewport.name &&
+      (CanvasViewport.parse(viewport) ?? CanvasViewport.phone) ==
+          frame.viewport &&
       state == frame.state?.name;
 
   factory CanvasComment.fromJson(Map<String, Object?> json) {
@@ -542,3 +528,265 @@ Map<String, Object?> newCommentBody({
   },
   'comment': comment,
 };
+
+// ── 단계 보기 ──────────────────────────────────────────
+
+/// 지난 단계 하나 — 코멘트 서버의 GET /stages가 준 것. 그림은 프로젝트 맨 위 `.canvas-stages/<단계 이름>/`에 있다
+/// (`.claude/scripts/stage-shots.sh`가 단계 태그마다 찍는다).
+class CanvasStage {
+  const CanvasStage({
+    required this.name,
+    this.desc = '',
+    this.date = '',
+    this.keys = const [],
+  });
+
+  /// 단계 이름 — 태그 이름에서 `stage/`를 뗀 것(예: `2-3-drafts`). 그림 주소에도 쓴다
+  final String name;
+
+  /// 한 줄 설명
+  final String desc;
+
+  /// 그 단계 커밋의 시각(ISO 8601)
+  final String date;
+
+  /// 그 단계에 찍어 둔 그림의 창 열쇠 — 이름순
+  final List<String> keys;
+
+  factory CanvasStage.fromJson(Map<String, Object?> json) => CanvasStage(
+    name: json['name'] as String? ?? '',
+    desc: json['desc'] as String? ?? '',
+    date: json['date'] as String? ?? '',
+    keys: [
+      for (final key in json['keys'] as List? ?? const [])
+        if (key is String) key,
+    ],
+  );
+}
+
+/// 창 열쇠를 화면 id 조각·판 조각으로 가른다. 보통 폰 기본 모양(`…__phone__base`)이 아니면 null —
+/// 단계 보기는 화면마다 기본 모양만 놓는다.
+({String screenId, String variant})? parseBaseKey(String key) {
+  final parts = key.split('__');
+  if (parts.length != 4 ||
+      parts[2] != CanvasViewport.phone.name ||
+      parts[3] != 'base') {
+    return null;
+  }
+  return (screenId: parts[0], variant: parts[1]);
+}
+
+/// 단계 보기의 화면 세로줄 하나 — 모든 띠에서 같은 x 자리다
+class StageColumn {
+  const StageColumn({required this.id, this.screen});
+
+  /// 창 열쇠의 화면 id 조각
+  final String id;
+
+  /// 지금 화면 목록에 있는 화면이면 그 화면. 지난 단계에만 있는 화면이면 null(머리 이름은 [id] 그대로)
+  final CanvasScreen? screen;
+
+  String get title => screen == null ? id : '${screen!.id}  ${screen!.name}';
+}
+
+/// 단계 보기의 창 자리 하나 — 「지금 앱」 띠면 [frame], 지난 단계면 [stage]의 그림 [key]
+class StageCell {
+  const StageCell({
+    required this.column,
+    required this.row,
+    required this.key,
+    this.frame,
+    this.stage,
+  });
+
+  /// 몇 번째 화면 세로줄인지(0부터)
+  final int column;
+
+  /// 띠 안에서 그 세로줄의 몇 번째 창인지(0부터) — 원래 화면 → 비교안 차례로 쌓는다
+  final int row;
+
+  /// 창 열쇠
+  final String key;
+  final CanvasFrame? frame;
+  final CanvasStage? stage;
+
+  /// 창 이름 — 지금 앱 창은 [CanvasFrame.label], 지난 단계 그림은 「원래 화면」·「비교안 {판 조각}」
+  String get label {
+    final f = frame;
+    if (f != null) return f.label;
+    final variant = parseBaseKey(key)?.variant ?? key;
+    return variant == 'main'
+        ? '원래 화면'
+        : '비교안 ${variant.replaceFirst('draft-', '')}';
+  }
+}
+
+/// 단계 보기의 띠 하나 — 단계 하나를 가로 한 줄로
+class StageBand {
+  const StageBand({
+    required this.stage,
+    required this.cells,
+    required this.rows,
+  });
+
+  /// 지난 단계면 그 단계, 「지금 앱」 띠면 null
+  final CanvasStage? stage;
+  final List<StageCell> cells;
+
+  /// 가장 많이 쌓인 세로줄의 창 수 — 띠 높이가 이것에 맞는다
+  final int rows;
+}
+
+class StageLayout {
+  const StageLayout({required this.columns, required this.bands});
+
+  final List<StageColumn> columns;
+
+  /// 지난 단계(서버가 준 차례 = 날짜순) 뒤에 맨 끝 「지금 앱」
+  final List<StageBand> bands;
+}
+
+/// 단계 보기 배치 — 띠는 [stages] 차례대로 놓고 [showNow]면 맨 끝에 「지금 앱」 띠를 붙인다.
+///
+/// - 세로줄: 지금 화면 목록 차례, 그 뒤에 지난 단계에만 있는 화면 id를 이름순. 놓인 창이 하나도 없는 세로줄은 뺀다.
+/// - 「지금 앱」 띠: 지금 창 가운데 기본 모양(state == null)만 — 원래 화면과 남은 비교안 줄.
+/// - 지난 단계 띠: 그 단계 그림 가운데 보통 폰 기본 모양만. 한 세로줄 안은 원래 화면(main) → 비교안 차례이고,
+///   비교안끼리는 지금 화면 목록의 판 차례(없는 판은 그 뒤에 이름순)를 따른다. 그림이 하나도 없는 단계는 띠를 만들지 않는다.
+StageLayout buildStageLayout(
+  List<CanvasScreen> screens,
+  List<CanvasStage> stages, {
+  bool showNow = true,
+}) {
+  final nowFrames = buildFrames(screens)
+      .where((frame) => frame.state == null)
+      .toList();
+  final screenById = <String, CanvasScreen>{};
+  for (final screen in screens) {
+    screenById.putIfAbsent(CanvasFrame._slug(screen.id), () => screen);
+  }
+
+  // 화면마다 지금 판 차례 — 지난 단계 비교안을 같은 차례로 쌓으려고
+  final variantOrder = <String, List<String>>{};
+  for (final frame in nowFrames) {
+    final parsed = parseBaseKey(frame.key);
+    if (parsed == null) continue;
+    variantOrder.putIfAbsent(parsed.screenId, () => []).add(parsed.variant);
+  }
+
+  // 띠마다 화면 id → 그 세로줄에 쌓을 창(열쇠·지금 창)
+  final bandStacks =
+      <
+        ({CanvasStage? stage, Map<String, List<(String, CanvasFrame?)>> stacks})
+      >[];
+  for (final stage in stages) {
+    final stacks = <String, List<(String, CanvasFrame?)>>{};
+    for (final key in stage.keys) {
+      final parsed = parseBaseKey(key);
+      if (parsed == null) continue;
+      stacks.putIfAbsent(parsed.screenId, () => []).add((key, null));
+    }
+    if (stacks.isEmpty) continue;
+    for (final entry in stacks.entries) {
+      final order = variantOrder[entry.key] ?? const [];
+      int rank(String key) {
+        final variant = parseBaseKey(key)!.variant;
+        if (variant == 'main') return -1;
+        final index = order.indexOf(variant);
+        return index < 0 ? order.length : index;
+      }
+
+      entry.value.sort((a, b) {
+        final byRank = rank(a.$1).compareTo(rank(b.$1));
+        return byRank != 0 ? byRank : a.$1.compareTo(b.$1);
+      });
+    }
+    bandStacks.add((stage: stage, stacks: stacks));
+  }
+  if (showNow) {
+    final stacks = <String, List<(String, CanvasFrame?)>>{};
+    for (final frame in nowFrames) {
+      stacks.putIfAbsent(CanvasFrame._slug(frame.screen.id), () => []).add((
+        frame.key,
+        frame,
+      ));
+    }
+    bandStacks.add((stage: null, stacks: stacks));
+  }
+
+  final used = {for (final band in bandStacks) ...band.stacks.keys};
+  final ids = <String>[
+    for (final id in screenById.keys)
+      if (used.contains(id)) id,
+    ...(used.where((id) => !screenById.containsKey(id)).toList()..sort()),
+  ];
+  final columnOf = {for (var i = 0; i < ids.length; i++) ids[i]: i};
+
+  return StageLayout(
+    columns: [
+      for (final id in ids) StageColumn(id: id, screen: screenById[id]),
+    ],
+    bands: [
+      for (final band in bandStacks)
+        StageBand(
+          stage: band.stage,
+          rows: band.stacks.values.fold(
+            0,
+            (most, stack) => stack.length > most ? stack.length : most,
+          ),
+          cells:
+              [
+                for (final entry in band.stacks.entries)
+                  for (var row = 0; row < entry.value.length; row++)
+                    StageCell(
+                      column: columnOf[entry.key]!,
+                      row: row,
+                      key: entry.value[row].$1,
+                      frame: entry.value[row].$2,
+                      stage: band.stage,
+                    ),
+              ]..sort(
+                (a, b) => a.column != b.column
+                    ? a.column.compareTo(b.column)
+                    : a.row.compareTo(b.row),
+              ),
+        ),
+    ],
+  );
+}
+
+// ── 판 그리기 도우미 ───────────────────────────────────
+
+/// 화면 밖 창은 만들지 않는다 — 보이는 영역(장면 좌표)을 둘레로 그 크기만큼 넓힌 범위 안의 창만 만든다.
+/// 넉넉히 넓혀 두니 조금 옮길 때마다 다시 잴 일이 없다.
+Rect buildAreaAround(Rect visible) => Rect.fromLTRB(
+  visible.left - visible.width,
+  visible.top - visible.height,
+  visible.right + visible.width,
+  visible.bottom + visible.height,
+);
+
+/// 지금 만든 범위 [built]를 다시 재야 하나 — 보이는 영역이 범위를 벗어났거나,
+/// 확대해 들어가 범위가 보이는 영역보다 지나치게 커졌을 때(폭이 6배 넘게)
+bool needsNewBuildArea(Rect? built, Rect visible) {
+  if (built == null) return true;
+  final inside =
+      visible.left >= built.left &&
+      visible.top >= built.top &&
+      visible.right <= built.right &&
+      visible.bottom <= built.bottom;
+  return !inside || built.width > visible.width * 6;
+}
+
+/// [rects] 가운데 [area]와 겹치는 것의 열쇠
+Set<String> keysInArea(Map<String, Rect> rects, Rect area) => {
+  for (final entry in rects.entries)
+    if (entry.value.overlaps(area)) entry.key,
+};
+
+/// 미리보기 그림을 창 폭의 몇 배로 풀지 — 멀리서 볼수록 작게 풀어 메모리를 던다.
+/// 경계를 넘을 때마다 그림을 다시 받으니 단계는 셋만 둔다. 1이면 그림 원래 크기 그대로 푼다.
+double shotDetailFor(double scale) => scale < 0.15
+    ? 0.25
+    : scale < 0.4
+    ? 0.6
+    : 1.0;

@@ -687,9 +687,9 @@ class _CanvasBoardState extends State<CanvasBoard> {
     );
     int baseCount(CanvasStage stage) =>
         stage.keys.where((key) => parseBaseKey(key) != null).length;
-    final nowCount = buildFrames(
-      screens,
-    ).where((frame) => frame.state == null).length;
+    final nowCount = buildFrames(screens)
+        .where((frame) => frame.state == null)
+        .length;
     return Material(
       color: colors.surface,
       child: SizedBox(
@@ -729,9 +729,7 @@ class _CanvasBoardState extends State<CanvasBoard> {
                     onTap: () => _selectGroup(group),
                   ),
                 if (screens.isEmpty)
-                  note(
-                    '띄울 화면이 없습니다. 화면 목록의 「주소」 칸을 채운 뒤 목록 파일을 다시 만드세요.',
-                  ),
+                  note('띄울 화면이 없습니다. 화면 목록의 「주소」 칸을 채운 뒤 목록 파일을 다시 만드세요.'),
               ] else ...[
                 item(
                   selected: _stageFilter == null,
@@ -781,7 +779,8 @@ class _CanvasBoardState extends State<CanvasBoard> {
       boundaryMargin: const EdgeInsets.all(double.infinity),
       minScale: 0.02,
       maxScale: 3,
-      onInteractionEnd: (_) => _onTransform(),
+      // 배율 글자(「…%」)도 새로 그리도록 늘 다시 그린다
+      onInteractionEnd: (_) => setState(_onTransform),
       child: SizedBox.fromSize(
         size: _scene,
         child: Stack(
@@ -1341,7 +1340,11 @@ class _Header {
 
 /// 단계 보기의 띠 머리 — 단계 이름과 설명
 class _BandHead {
-  const _BandHead({required this.title, required this.desc, required this.rect});
+  const _BandHead({
+    required this.title,
+    required this.desc,
+    required this.rect,
+  });
 
   final String title;
   final String desc;

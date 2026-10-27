@@ -1,4 +1,4 @@
-// 목업 캔버스의 목록 펴기·코멘트 모양 검사 — 화면을 열지 않는 단위 테스트.
+// 목업 캔버스의 목록 펴기·코멘트 모양·단계 보기 배치·판 그리기 도우미 검사 — 화면을 열지 않는 단위 테스트.
 import 'package:<앱>/core/dev_state/dev_state.dart';
 import 'package:<앱>/dev/canvas/canvas_model.dart';
 import 'package:flutter/widgets.dart';
@@ -13,18 +13,15 @@ void main() {
     states: [DevState.empty, DevState.error],
   );
 
-  test('화면 하나를 상태 줄 × 폰 크기 한 쌍으로 편다', () {
+  test('화면 하나를 상태마다 보통 폰 창 한 줄로 편다', () {
     final frames = buildFrames([list]);
     expect(frames.map((f) => f.key), [
       'S-01__main__phone__base',
-      'S-01__main__small__base',
       'S-01__main__phone__empty',
-      'S-01__main__small__empty',
       'S-01__main__phone__error',
-      'S-01__main__small__error',
     ]);
-    expect(frames.map((f) => f.row).toSet(), {0, 1, 2});
-    expect(frames[2].url, '/meetings?state=empty');
+    expect(frames.map((f) => f.row), [0, 1, 2]);
+    expect(frames[1].url, '/meetings?state=empty');
   });
 
   test('비교안은 원래 화면 아래 줄에 붙고, 상태를 따로 적을 수 있다', () {
@@ -38,10 +35,7 @@ void main() {
       const [],
     );
     final drafts = buildFrames(screens).where((f) => f.draft != null).toList();
-    expect(drafts.map((f) => f.key), [
-      'S-01__draft-B__phone__base',
-      'S-01__draft-B__small__base',
-    ]);
+    expect(drafts.map((f) => f.key), ['S-01__draft-B__phone__base']);
     expect(drafts.first.row, 3);
     expect(drafts.first.location, '/meetings');
   });
@@ -55,14 +49,11 @@ void main() {
       ),
     ]).firstWhere((f) => f.draft != null);
 
-    expect(buildFrames([list]).first.label, '지금 앱 · 보통 폰 · 기본');
-    expect(draftFrame(DraftPick.open).label, '대담판 (bold) · 비교안 · 보통 폰 · 기본');
-    expect(draftFrame(DraftPick.picked).label, '대담판 (bold) · 고름 · 보통 폰 · 기본');
-    expect(
-      draftFrame(DraftPick.notPicked).label,
-      '대담판 (bold) · 고르지 않음 · 보통 폰 · 기본',
-    );
-    expect(draftFrame(DraftPick.app).label, '지금 앱 · 대담판 (bold) · 보통 폰 · 기본');
+    expect(buildFrames([list]).first.label, '지금 앱 · 기본');
+    expect(draftFrame(DraftPick.open).label, '대담판 (bold) · 비교안 · 기본');
+    expect(draftFrame(DraftPick.picked).label, '대담판 (bold) · 고름 · 기본');
+    expect(draftFrame(DraftPick.notPicked).label, '대담판 (bold) · 고르지 않음 · 기본');
+    expect(draftFrame(DraftPick.app).label, '지금 앱 · 대담판 (bold) · 기본');
     expect(DraftPick.values.map((p) => draftFrame(p).key).toSet(), {
       'S-01__draft-bold__phone__base',
     });
@@ -84,7 +75,7 @@ void main() {
       const [],
     );
     final keys = buildFrames(screens)
-        .where((f) => f.draft != null && f.viewport == CanvasViewport.phone)
+        .where((f) => f.draft != null)
         .map((f) => f.key)
         .toList();
     expect(keys, [
@@ -93,7 +84,8 @@ void main() {
       'S-01__draft-stay-focus-pot__phone__base',
       'S-01__draft-stay-many__phone__base',
     ]);
-    final near = buildFrames(screens).firstWhere((f) => f.draft?.focus == 'pot');
+    final near = buildFrames(screens)
+        .firstWhere((f) => f.draft?.focus == 'pot');
     expect(near.url, '/meetings?focus=pot');
     final many = buildFrames(screens).firstWhere((f) => f.draft?.many ?? false);
     expect(many.url, '/meetings?state=many');
@@ -106,7 +98,7 @@ void main() {
         const CanvasScreen(id: 'S-02', name: '상세', group: 'g', path: '/d'),
       ],
       {
-        'S-01': const CanvasOverride(widths: [CanvasViewport.small]),
+        'S-01': const CanvasOverride(name: '모임 목록'),
         'S-02': const CanvasOverride(skip: true),
       },
       [
@@ -119,12 +111,9 @@ void main() {
       ],
     );
     expect(screens.map((s) => s.id), ['S-01', 'DS']);
+    expect(screens.first.name, '모임 목록');
     expect(screens.first.states, list.states);
-    expect(
-      buildFrames([screens.first])
-          .every((f) => f.viewport == CanvasViewport.small),
-      isTrue,
-    );
+    expect(screens.first.path, list.path);
     final widget = buildFrames([screens.last]).first;
     expect(widget.location, isNull);
     expect(widget.builder, isNotNull);
@@ -144,7 +133,7 @@ void main() {
   });
 
   test('코멘트는 JSON으로 그대로 오가고, 같은 창에만 꽂힌다', () {
-    final frame = buildFrames([list])[2];
+    final frame = buildFrames([list])[1];
     final json = {
       ...newCommentBody(
         frame: frame,
@@ -169,7 +158,207 @@ void main() {
     expect(comment.state, 'empty');
     expect(comment.viewport, 'phone');
     expect(comment.belongsTo(frame), isTrue);
-    expect(comment.belongsTo(buildFrames([list])[3]), isFalse);
+    expect(comment.belongsTo(buildFrames([list])[2]), isFalse);
+  });
+
+  test('옛 작은 폰 코멘트는 같은 화면·판·상태의 보통 폰 창에 꽂히고, 값은 그대로 남는다', () {
+    final frame = buildFrames([list])[1]; // 빈 상태
+    final json = {
+      'id': 'c-old',
+      'screenId': 'S-01',
+      'screenName': '목록',
+      'draft': null,
+      'url': '/meetings?state=empty',
+      'viewport': 'small',
+      'state': 'empty',
+      'target': const CanvasCommentTarget().toJson(),
+      'position': {'x': 10.0, 'y': 20.0, 'rx': 0.5, 'ry': 0.5},
+      'comment': '좁은 폭에서 넘쳐요',
+      'status': 'open',
+      'resolution': '',
+      'createdAt': '2026-01-01T00:00:00.000Z',
+      'resolvedAt': null,
+    };
+    final comment = CanvasComment.fromJson(json);
+    expect(comment.belongsTo(frame), isTrue);
+    expect(comment.belongsTo(buildFrames([list])[0]), isFalse);
+    expect(comment.toJson()['viewport'], 'small');
+  });
+
+  group('단계 보기 배치', () {
+    final screens = [
+      list.copyWith(
+        drafts: const [
+          CanvasDraft(label: '대담판 (bold)', states: []),
+          CanvasDraft(label: '혁신판 (innov)', states: []),
+        ],
+      ),
+      const CanvasScreen(
+        id: 'S-02',
+        name: '상세',
+        group: 'g',
+        path: '/d',
+        states: [DevState.empty],
+      ),
+    ];
+
+    const older = CanvasStage(
+      name: '2-2-rules',
+      desc: '화면 규칙',
+      date: '2026-10-20T10:00:00+09:00',
+      keys: [
+        'S-02__main__phone__base',
+        'S-09__main__phone__base', // 지금은 없는 화면
+        'S-01__main__phone__base',
+        'S-01__main__small__base', // 옛 작은 폰 그림 — 단계 보기에 놓지 않는다
+        'S-01__main__phone__empty', // 상태 그림 — 놓지 않는다
+      ],
+    );
+    const newer = CanvasStage(
+      name: '2-3-drafts',
+      date: '2026-10-25T10:00:00+09:00',
+      keys: [
+        'S-01__draft-old__phone__base', // 지금은 없는 판 — 지금 판 뒤로
+        'S-01__draft-innov__phone__base',
+        'S-01__main__phone__base',
+        'S-01__draft-bold__phone__base',
+        'S-05__main__phone__base',
+      ],
+    );
+
+    test('띠는 받은 단계 차례 뒤에 「지금 앱」, 세로줄은 지금 화면 차례 뒤에 지난 단계에만 있는 화면을 이름순', () {
+      final layout = buildStageLayout(screens, const [older, newer]);
+      expect(layout.bands.map((b) => b.stage?.name), [
+        '2-2-rules',
+        '2-3-drafts',
+        null,
+      ]);
+      expect(layout.columns.map((c) => c.id), ['S-01', 'S-02', 'S-05', 'S-09']);
+      expect(layout.columns.map((c) => c.title), [
+        'S-01  목록',
+        'S-02  상세',
+        'S-05',
+        'S-09',
+      ]);
+    });
+
+    test('같은 화면은 모든 띠에서 같은 세로줄, 한 세로줄 안은 원래 화면 → 비교안(지금 판 차례, 없는 판은 뒤)', () {
+      final layout = buildStageLayout(screens, const [older, newer]);
+      List<(int, int, String)> cells(StageBand band) => [
+        for (final cell in band.cells) (cell.column, cell.row, cell.key),
+      ];
+
+      expect(cells(layout.bands[0]), [
+        (0, 0, 'S-01__main__phone__base'),
+        (1, 0, 'S-02__main__phone__base'),
+        (3, 0, 'S-09__main__phone__base'),
+      ]);
+      expect(layout.bands[0].rows, 1);
+
+      expect(cells(layout.bands[1]), [
+        (0, 0, 'S-01__main__phone__base'),
+        (0, 1, 'S-01__draft-bold__phone__base'),
+        (0, 2, 'S-01__draft-innov__phone__base'),
+        (0, 3, 'S-01__draft-old__phone__base'),
+        (2, 0, 'S-05__main__phone__base'),
+      ]);
+      expect(layout.bands[1].rows, 4);
+      expect(layout.bands[1].cells[1].label, '비교안 bold');
+      expect(layout.bands[1].cells[0].label, '원래 화면');
+      expect(layout.bands[1].cells.every((c) => c.frame == null), isTrue);
+    });
+
+    test('「지금 앱」 띠는 기본 모양 창만 — 원래 화면과 비교안 줄, 상태 줄은 뺀다', () {
+      final now = buildStageLayout(screens, const []).bands.single;
+      expect(now.stage, isNull);
+      expect(now.cells.map((c) => c.key), [
+        'S-01__main__phone__base',
+        'S-01__draft-bold__phone__base',
+        'S-01__draft-innov__phone__base',
+        'S-02__main__phone__base',
+      ]);
+      expect(now.cells.every((c) => c.frame?.state == null), isTrue);
+      expect(now.cells.first.label, '지금 앱 · 기본');
+      expect(now.rows, 3);
+    });
+
+    test('띠 하나만 고르면 그 띠에 놓인 세로줄만 남는다', () {
+      final onlyOlder = buildStageLayout(screens, const [
+        older,
+      ], showNow: false);
+      expect(onlyOlder.bands.single.stage?.name, '2-2-rules');
+      expect(onlyOlder.columns.map((c) => c.id), ['S-01', 'S-02', 'S-09']);
+
+      const empty = CanvasStage(name: 'x', keys: ['S-01__main__small__base']);
+      expect(buildStageLayout(screens, const [empty]).bands.length, 1);
+    });
+
+    test('창 열쇠 가르기 — 보통 폰 기본 모양만', () {
+      expect(parseBaseKey('S-01__draft-bold__phone__base'), (
+        screenId: 'S-01',
+        variant: 'draft-bold',
+      ));
+      expect(parseBaseKey('S-01__main__phone__empty'), isNull);
+      expect(parseBaseKey('S-01__main__small__base'), isNull);
+      expect(parseBaseKey('엉뚱한 이름'), isNull);
+    });
+
+    test('서버가 준 단계 JSON을 읽는다', () {
+      final stage = CanvasStage.fromJson({
+        'name': '2-3-drafts',
+        'desc': '세 판',
+        'date': '2026-10-25T10:00:00+09:00',
+        'keys': ['S-01__main__phone__base', 3],
+      });
+      expect(stage.name, '2-3-drafts');
+      expect(stage.desc, '세 판');
+      expect(stage.keys, ['S-01__main__phone__base']);
+    });
+  });
+
+  group('판 그리기 도우미', () {
+    test('만드는 범위는 보이는 영역을 둘레로 그 크기만큼 넓힌 것', () {
+      expect(
+        buildAreaAround(const Rect.fromLTWH(100, 200, 50, 40)),
+        const Rect.fromLTRB(50, 160, 200, 280),
+      );
+    });
+
+    test('보이는 영역이 범위 안이면 다시 재지 않고, 벗어나거나 너무 작아지면 다시 잰다', () {
+      const visible = Rect.fromLTWH(0, 0, 100, 100);
+      final built = buildAreaAround(visible);
+      expect(needsNewBuildArea(null, visible), isTrue);
+      expect(needsNewBuildArea(built, visible), isFalse);
+      expect(
+        needsNewBuildArea(built, visible.shift(const Offset(90, 0))),
+        isFalse,
+      );
+      expect(
+        needsNewBuildArea(built, visible.shift(const Offset(120, 0))),
+        isTrue,
+      );
+      expect(
+        needsNewBuildArea(built, const Rect.fromLTWH(0, 0, 40, 40)),
+        isTrue,
+      );
+    });
+
+    test('범위와 겹치는 창만 고른다', () {
+      final rects = {
+        'a': const Rect.fromLTWH(0, 0, 10, 10),
+        'b': const Rect.fromLTWH(100, 0, 10, 10),
+        'c': const Rect.fromLTWH(45, 45, 10, 10),
+      };
+      expect(keysInArea(rects, const Rect.fromLTWH(0, 0, 50, 50)), {'a', 'c'});
+    });
+
+    test('그림 크기 단계 — 멀수록 작게, 가까우면 원래 크기', () {
+      expect(shotDetailFor(0.05), 0.25);
+      expect(shotDetailFor(0.15), 0.6);
+      expect(shotDetailFor(0.39), 0.6);
+      expect(shotDetailFor(0.4), 1.0);
+      expect(shotDetailFor(2), 1.0);
+    });
   });
 
   test('상태 흉내 — null이면 평소대로, 로딩은 끝나지 않는다', () async {

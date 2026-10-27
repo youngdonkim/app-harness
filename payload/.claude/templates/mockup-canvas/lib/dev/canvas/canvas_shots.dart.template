@@ -73,16 +73,15 @@ class HttpCanvasStageSource extends CanvasStageSource {
 
   @override
   Future<List<CanvasStage>> list() async {
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 2);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
     try {
       final request = await client.getUrl(Uri.parse('$address/stages'));
       final response = await request.close().timeout(
         const Duration(seconds: 5),
       );
-      final json =
-          (jsonDecode(await response.transform(utf8.decoder).join()) as Map)
-              .cast<String, Object?>();
+      final json = (jsonDecode(
+        await response.transform(utf8.decoder).join(),
+      ) as Map).cast<String, Object?>();
       // 다른 프로젝트의 서버면 그 단계 그림을 이 판에 놓지 않는다
       final server = json['project'];
       final canvas = canvasProjectName();
@@ -112,9 +111,8 @@ class HttpCanvasStageSource extends CanvasStageSource {
     String key,
     double detail,
   ) => canvasShotImage(
-    Uri.parse(
-      address,
-    ).replace(pathSegments: ['stages', stage.name, '$key.png']),
+    Uri.parse(address)
+        .replace(pathSegments: ['stages', stage.name, '$key.png']),
     width: CanvasViewport.phone.size.width,
     detail: detail,
     placeholder: CanvasStageCard(stage: stage, shotKey: key),

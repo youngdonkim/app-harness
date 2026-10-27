@@ -1,8 +1,12 @@
 // 목업 캔버스 — 모든 화면을 흐름 순서로 펼쳐 놓고, 확대·이동하며 보고, 고칠 곳에 코멘트 핀을 꽂는 개발용 앱.
 //
 // lib/main_canvas.dart가 띄운다. iPad 시뮬레이터에서 본다(.claude/templates/mockup-canvas/README.md).
-// 판 배치: 왼쪽 → 오른쪽이 흐름 순서(화면 세로줄), 한 화면 세로줄 안은 위 → 아래로 기본 모양·상태·비교안 줄,
-// 한 줄 안은 보통 폰 · 작은 폰 한 쌍.
+// 판 배치는 왼쪽 목록 위의 전환으로 둘 중 하나를 고른다.
+// - 흐름 묶음: 왼쪽 → 오른쪽이 흐름 순서(화면 세로줄), 한 화면 세로줄 안은 위 → 아래로 기본 모양·상태·비교안 줄(한 줄에 보통 폰 창 하나).
+// - 단계: 지난 단계마다 가로 띠 하나(날짜순), 맨 끝에 「지금 앱」 띠. 같은 화면은 모든 띠에서 같은 세로줄에 놓여
+//   단계를 거치며 화면이 어떻게 바뀌었는지 위아래로 견준다. 지난 단계 창은 그림만 보여 준다(실제 화면·코멘트 없음).
+//   배치는 canvas_model.dart의 buildStageLayout이 정한다.
+// 화면 밖 창은 만들지 않는다 — 보이는 영역을 둘레로 넉넉히 넓힌 범위 안의 창만 만들고, 그 범위를 벗어날 때만 다시 잰다.
 //
 // 이 앱 껍데기(목록·단추·핀)는 프로젝트 디자인과 상관없는 개발 도구라 Material 기본 테마로 그린다.
 // 창 안의 화면만 프로젝트 테마(CanvasConfig.theme)로 그린다.
@@ -22,12 +26,15 @@ import 'canvas_shots.dart';
 /// 판 배치 숫자(dp) — 캔버스 껍데기 전용
 abstract final class _Layout {
   static const pad = 160.0;
-  static const viewportGap = 40.0;
   static const columnGap = 160.0;
   static const groupGap = 400.0;
   static const headerHeight = 220.0;
   static const labelHeight = 64.0;
   static const rowGap = 120.0;
+
+  /// 단계 보기의 띠 머리(단계 이름·설명) 높이와 가장 좁은 폭
+  static const bandHeadHeight = 200.0;
+  static const bandHeadMinWidth = 1600.0;
 
   /// 이 배율 이상으로 확대해야 실제 화면이 뜬다
   static const liveMinScale = 0.3;
@@ -75,6 +82,12 @@ typedef _Pick = ({
   Offset ratio,
 });
 
+/// 판 배치 — 흐름 묶음 또는 단계
+enum _View { flow, stage }
+
+/// 단계 목록에서 「지금 앱」을 가리키는 값 — 빈 이름은 단계 폴더 이름이 될 수 없다
+const _nowBand = '';
+
 class _CanvasBoardState extends State<CanvasBoard> {
   late final CanvasCommentStore _store =
       widget.config.comments ?? HttpCanvasCommentStore();
@@ -82,14 +95,22 @@ class _CanvasBoardState extends State<CanvasBoard> {
   final _focus = FocusNode(debugLabel: '목업 캔버스');
   final _draftText = TextEditingController();
 
-  String? _group; // null이면 전체
-  List<CanvasFrame> _frames = const [];
-  Map<String, Rect> _rects = const {};
+  _View _view = _View.flow;
+  String? _group; // 흐름 묶음 보기에서 고른 묶음. null이면 전체
+  String? _stageFilter; // 단계 보기에서 고른 띠. null이면 전체, _nowBand면 「지금 앱」
+  List<CanvasStage> _stages = const []; // 서버가 준 지난 단계(날짜순) — 기본 모양 그림이 있는 것만
+  List<CanvasFrame> _frames = const []; // 판에 놓인 지금 앱 창 — 실제 화면으로 띄울 수 있는 것
+  List<_Tile> _tiles = const []; // 판에 놓인 창 전부(지난 단계 그림 포함)
+  Map<String, Rect> _rects = const {}; // 창 자리 — 열쇠는 _Tile.id
   List<_Header> _headers = const [];
+  List<_BandHead> _bandHeads = const [];
   Size _scene = Size.zero;
   Size _viewport = Size.zero;
   Set<String> _live = const {};
   bool _fitted = false;
+  Rect? _area; // 지금 창을 만들어 둔 범위(장면 좌표)
+  Set<String> _built = const {}; // 그 범위 안의 창(_Tile.id)
+  double _detail = shotDetailFor(0); // 미리보기 그림을 창 폭의 몇 배로 풀지
 
   List<CanvasComment> _comments = const [];
   bool? _serverOk;
@@ -102,7 +123,7 @@ class _CanvasBoardState extends State<CanvasBoard> {
   _Pick? _pick;
   String? _saveError;
   bool _saving = false;
-  CanvasFrame? _enlarged;
+  _Tile? _enlarged;
   String? _highlight; // 목록에서 짚은 코멘트 id
   Timer? _poll;
 
@@ -111,8 +132,9 @@ class _CanvasBoardState extends State<CanvasBoard> {
     super.initState();
     rememberProjectRoot(widget);
     _layout();
-    _transform.addListener(_updateLive);
+    _transform.addListener(_onTransform);
     _loadComments();
+    _loadStages();
     _poll = Timer.periodic(const Duration(seconds: 5), (_) => _loadComments());
   }
 
@@ -133,17 +155,28 @@ class _CanvasBoardState extends State<CanvasBoard> {
             .where((screen) => screen.group == _group)
             .toList();
 
+  static final _phone = CanvasViewport.phone.size;
+  static final _rowHeight =
+      _phone.height + _Layout.labelHeight + _Layout.rowGap;
+
   void _layout() {
+    if (_view == _View.stage) {
+      _layoutStage();
+    } else {
+      _layoutFlow();
+    }
+    _area = null;
+    _built = const {};
+    final visible = _visibleRect();
+    if (visible != null) _refreshArea(visible);
+  }
+
+  /// 흐름 묶음 보기 — 화면마다 세로줄 하나, 묶음이 바뀌면 조금 더 띄운다
+  void _layoutFlow() {
     final screens = _screens;
     final frames = buildFrames(screens);
     final rects = <String, Rect>{};
     final headers = <_Header>[];
-    final rowHeight =
-        CanvasViewport.values
-            .map((v) => v.size.height)
-            .reduce((a, b) => a > b ? a : b) +
-        _Layout.labelHeight +
-        _Layout.rowGap;
     var x = _Layout.pad;
     var maxRows = 1;
     String? lastGroup;
@@ -152,63 +185,157 @@ class _CanvasBoardState extends State<CanvasBoard> {
       if (lastGroup != null && screen.group != lastGroup) {
         x += _Layout.groupGap - _Layout.columnGap;
       }
-      final widths = CanvasViewport.values.where(
-        (v) => screen.widths.isEmpty || screen.widths.contains(v),
-      );
-      final columnWidth =
-          widths.fold(0.0, (sum, v) => sum + v.size.width) +
-          _Layout.viewportGap * (widths.length - 1);
       headers.add(
         _Header(
-          screen: screen,
-          showGroup: screen.group != lastGroup,
+          group: screen.group != lastGroup ? screen.group : null,
+          title: '${screen.id}  ${screen.name}',
           rect: Rect.fromLTWH(
             x,
             _Layout.pad,
-            columnWidth,
+            _phone.width,
             _Layout.headerHeight,
           ),
         ),
       );
       for (final frame in frames.where((f) => f.column == column)) {
-        var left = x;
-        for (final v in widths) {
-          if (v == frame.viewport) break;
-          left += v.size.width + _Layout.viewportGap;
-        }
-        final top =
-            _Layout.pad +
-            _Layout.headerHeight +
-            frame.row * rowHeight +
-            _Layout.labelHeight;
         rects[frame.key] = Rect.fromLTWH(
-          left,
-          top,
-          frame.viewport.size.width,
-          frame.viewport.size.height,
+          x,
+          _Layout.pad +
+              _Layout.headerHeight +
+              frame.row * _rowHeight +
+              _Layout.labelHeight,
+          _phone.width,
+          _phone.height,
         );
         if (frame.row + 1 > maxRows) maxRows = frame.row + 1;
       }
-      x += columnWidth + _Layout.columnGap;
+      x += _phone.width + _Layout.columnGap;
       lastGroup = screen.group;
     }
     _frames = frames;
+    _tiles = [
+      for (final frame in frames)
+        _Tile(
+          id: frame.key,
+          label: frame.label,
+          title: '${frame.screen.id} ${frame.screen.name}',
+          frame: frame,
+        ),
+    ];
     _rects = rects;
     _headers = headers;
+    _bandHeads = const [];
     _scene = Size(
       x - _Layout.columnGap + _Layout.pad,
-      _Layout.pad * 2 + _Layout.headerHeight + maxRows * rowHeight,
+      _Layout.pad * 2 + _Layout.headerHeight + maxRows * _rowHeight,
     );
   }
 
-  void _selectGroup(String? group) {
+  /// 단계 보기 — 단계마다 띠 하나, 같은 화면은 모든 띠에서 같은 세로줄
+  void _layoutStage() {
+    final filter = _stageFilter;
+    final layout = buildStageLayout(
+      widget.config.screens,
+      filter == null
+          ? _stages
+          : _stages.where((stage) => stage.name == filter).toList(),
+      showNow: filter == null || filter == _nowBand,
+    );
+    double columnX(int column) =>
+        _Layout.pad + column * (_phone.width + _Layout.columnGap);
+    final contentWidth = layout.columns.isEmpty
+        ? 0.0
+        : columnX(layout.columns.length) - _Layout.columnGap - _Layout.pad;
+    final bandWidth = contentWidth > _Layout.bandHeadMinWidth
+        ? contentWidth
+        : _Layout.bandHeadMinWidth;
+
+    final headers = [
+      for (var column = 0; column < layout.columns.length; column++)
+        _Header(
+          title: layout.columns[column].title,
+          rect: Rect.fromLTWH(
+            columnX(column),
+            _Layout.pad,
+            _phone.width,
+            _Layout.headerHeight,
+          ),
+        ),
+    ];
+    final rects = <String, Rect>{};
+    final tiles = <_Tile>[];
+    final frames = <CanvasFrame>[];
+    final bandHeads = <_BandHead>[];
+    var y = _Layout.pad + _Layout.headerHeight;
+    for (final band in layout.bands) {
+      final stage = band.stage;
+      bandHeads.add(
+        _BandHead(
+          title: stage?.name ?? '지금 앱',
+          desc: stage == null
+              ? '지금 코드로 그린 화면입니다. 가까이 가면 실제 화면이 뜹니다.'
+              : [
+                  if (stage.date.length >= 10) stage.date.substring(0, 10),
+                  if (stage.desc.isNotEmpty) stage.desc,
+                ].join(' · '),
+          rect: Rect.fromLTWH(
+            _Layout.pad,
+            y,
+            bandWidth,
+            _Layout.bandHeadHeight,
+          ),
+        ),
+      );
+      y += _Layout.bandHeadHeight;
+      for (final cell in band.cells) {
+        final frame = cell.frame;
+        final id = frame?.key ?? 'stage:${stage!.name}/${cell.key}';
+        rects[id] = Rect.fromLTWH(
+          columnX(cell.column),
+          y + cell.row * _rowHeight + _Layout.labelHeight,
+          _phone.width,
+          _phone.height,
+        );
+        tiles.add(
+          _Tile(
+            id: id,
+            label: cell.label,
+            title: layout.columns[cell.column].title,
+            frame: frame,
+            stage: stage,
+            shotKey: cell.key,
+          ),
+        );
+        if (frame != null) frames.add(frame);
+      }
+      y += band.rows * _rowHeight + _Layout.groupGap - _Layout.rowGap;
+    }
+    _frames = frames;
+    _tiles = tiles;
+    _rects = rects;
+    _headers = headers;
+    _bandHeads = bandHeads;
+    _scene = Size(
+      _Layout.pad * 2 + bandWidth,
+      y - _Layout.groupGap + _Layout.rowGap + _Layout.pad,
+    );
+  }
+
+  /// 배치를 다시 하고 판 전체가 보이게 맞춘다
+  void _relayout(VoidCallback change) {
     setState(() {
-      _group = group;
+      change();
       _layout();
       _fitted = false;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _fit());
   }
+
+  void _selectGroup(String? group) => _relayout(() => _group = group);
+
+  void _selectStage(String? stage) => _relayout(() => _stageFilter = stage);
+
+  void _setView(_View view) => _relayout(() => _view = view);
 
   void _fit() {
     if (_viewport.isEmpty || _scene.isEmpty) return;
@@ -255,16 +382,35 @@ class _CanvasBoardState extends State<CanvasBoard> {
       ..scaleByDouble(scale, scale, scale, 1);
   }
 
-  /// 확대 배율과 보이는 자리를 보고 실제 화면으로 띄울 창을 고른다
-  void _updateLive() {
+  /// 지금 보이는 영역(장면 좌표) — 판 크기를 아직 모르면 null
+  Rect? _visibleRect() {
+    if (_viewport.isEmpty) return null;
+    return Rect.fromPoints(
+      _transform.toScene(Offset.zero),
+      _transform.toScene(_viewport.bottomRight(Offset.zero)),
+    );
+  }
+
+  /// 보이는 영역이 만든 범위를 벗어났으면 범위를 다시 잡는다. 만들 창이 바뀌었으면 true
+  bool _refreshArea(Rect visible) {
+    if (!needsNewBuildArea(_area, visible)) return false;
+    final area = buildAreaAround(visible);
+    _area = area;
+    final built = keysInArea(_rects, area);
+    if (_sameSet(built, _built)) return false;
+    _built = built;
+    return true;
+  }
+
+  /// 판을 옮기거나 확대할 때마다 불린다 — 만들 창·실제 화면으로 띄울 창·그림 크기 단계가 바뀔 때만 다시 그린다
+  void _onTransform() {
+    final visible = _visibleRect();
+    if (visible == null) return;
     final scale = _transform.value.getMaxScaleOnAxis();
+    final builtChanged = _refreshArea(visible);
+    final detail = shotDetailFor(scale);
     var live = <String>{};
-    if (scale >= _Layout.liveMinScale && !_viewport.isEmpty) {
-      final topLeft = _transform.toScene(Offset.zero);
-      final bottomRight = _transform.toScene(
-        _viewport.bottomRight(Offset.zero),
-      );
-      final visible = Rect.fromPoints(topLeft, bottomRight);
+    if (scale >= _Layout.liveMinScale) {
       final center = visible.center;
       final candidates =
           _frames.where((f) => _rects[f.key]!.overlaps(visible)).toList()..sort(
@@ -273,11 +419,33 @@ class _CanvasBoardState extends State<CanvasBoard> {
           );
       live = candidates.take(_Layout.maxLive).map((f) => f.key).toSet();
     }
-    if (!_sameSet(live, _live)) setState(() => _live = live);
+    if (builtChanged || detail != _detail || !_sameSet(live, _live)) {
+      setState(() {
+        _live = live;
+        _detail = detail;
+      });
+    }
   }
 
   static bool _sameSet(Set<String> a, Set<String> b) =>
       a.length == b.length && a.containsAll(b);
+
+  // ── 지난 단계 ──────────────────────────────────────────
+
+  /// 켤 때 한 번 받는다 — 그림을 다시 찍은 뒤에는 R(hot restart)로 다시 받는다
+  Future<void> _loadStages() async {
+    final source = widget.config.stages;
+    if (source == null) return;
+    final stages = await source.list();
+    if (!mounted) return;
+    setState(() {
+      _stages = [
+        for (final stage in stages)
+          if (stage.keys.any((key) => parseBaseKey(key) != null)) stage,
+      ];
+      if (_view == _View.stage) _layout();
+    });
+  }
 
   // ── 코멘트 ────────────────────────────────────────────
 
@@ -387,8 +555,10 @@ class _CanvasBoardState extends State<CanvasBoard> {
       return null;
     }
 
-    if (match() == null && _group != null) {
+    // 지금 배치에 그 창이 없으면(다른 묶음이거나, 단계 보기에 없는 상태 창) 흐름 묶음 전체로 돌아간다
+    if (match() == null && (_group != null || _view != _View.flow)) {
       setState(() {
+        _view = _View.flow;
         _group = null;
         _layout();
       });
@@ -445,7 +615,7 @@ class _CanvasBoardState extends State<CanvasBoard> {
                     _viewport = size;
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (!_fitted) _fit();
-                      _updateLive();
+                      _onTransform();
                     });
                   }
                   return Stack(
@@ -496,12 +666,30 @@ class _CanvasBoardState extends State<CanvasBoard> {
     final colors = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final screens = widget.config.screens;
-    Widget item(String? group, String label, int count) => ListTile(
-      selected: _group == group,
+    Widget item({
+      required bool selected,
+      required String label,
+      required int count,
+      required VoidCallback onTap,
+      String? subtitle,
+    }) => ListTile(
+      selected: selected,
       title: Text(label),
+      subtitle: subtitle == null || subtitle.isEmpty
+          ? null
+          : Text(subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
       trailing: Badge.count(count: count, backgroundColor: colors.secondary),
-      onTap: () => _selectGroup(group),
+      onTap: onTap,
     );
+    Widget note(String message) => Padding(
+      padding: const EdgeInsets.all(16),
+      child: Text(message, style: text.bodyMedium),
+    );
+    int baseCount(CanvasStage stage) =>
+        stage.keys.where((key) => parseBaseKey(key) != null).length;
+    final nowCount = buildFrames(screens)
+        .where((frame) => frame.state == null)
+        .length;
     return Material(
       color: colors.surface,
       child: SizedBox(
@@ -516,23 +704,59 @@ class _CanvasBoardState extends State<CanvasBoard> {
                   horizontal: 16,
                   vertical: 8,
                 ),
-                child: Text('흐름 묶음', style: text.titleMedium),
+                child: SegmentedButton<_View>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: _View.flow, label: Text('흐름 묶음')),
+                    ButtonSegment(value: _View.stage, label: Text('단계')),
+                  ],
+                  selected: {_view},
+                  onSelectionChanged: (value) => _setView(value.first),
+                ),
               ),
-              item(null, '전체', screens.length),
-              for (final group in groupsOf(screens))
+              if (_view == _View.flow) ...[
                 item(
-                  group,
-                  group,
-                  screens.where((s) => s.group == group).length,
+                  selected: _group == null,
+                  label: '전체',
+                  count: screens.length,
+                  onTap: () => _selectGroup(null),
                 ),
-              if (screens.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    '띄울 화면이 없습니다. 화면 목록의 「주소」 칸을 채운 뒤 목록 파일을 다시 만드세요.',
-                    style: text.bodyMedium,
+                for (final group in groupsOf(screens))
+                  item(
+                    selected: _group == group,
+                    label: group,
+                    count: screens.where((s) => s.group == group).length,
+                    onTap: () => _selectGroup(group),
                   ),
+                if (screens.isEmpty)
+                  note('띄울 화면이 없습니다. 화면 목록의 「주소」 칸을 채운 뒤 목록 파일을 다시 만드세요.'),
+              ] else ...[
+                item(
+                  selected: _stageFilter == null,
+                  label: '전체',
+                  count: _stages.length + 1,
+                  onTap: () => _selectStage(null),
                 ),
+                for (final stage in _stages)
+                  item(
+                    selected: _stageFilter == stage.name,
+                    label: stage.name,
+                    subtitle: stage.desc,
+                    count: baseCount(stage),
+                    onTap: () => _selectStage(stage.name),
+                  ),
+                item(
+                  selected: _stageFilter == _nowBand,
+                  label: '지금 앱',
+                  count: nowCount,
+                  onTap: () => _selectStage(_nowBand),
+                ),
+                if (_stages.isEmpty)
+                  note(
+                    '지난 단계 그림이 없습니다. 프로젝트 맨 위 폴더에서 '
+                    '`.claude/scripts/stage-shots.sh`로 찍습니다.',
+                  ),
+              ],
             ],
           ),
         ),
@@ -541,7 +765,7 @@ class _CanvasBoardState extends State<CanvasBoard> {
   }
 
   Widget _sidebarToggle() => IconButton.filledTonal(
-    tooltip: _sidebarOpen ? '흐름 묶음 목록 닫기' : '흐름 묶음 목록 열기',
+    tooltip: _sidebarOpen ? '목록 닫기' : '목록 열기',
     icon: Icon(_sidebarOpen ? Icons.menu_open : Icons.menu),
     onPressed: () => setState(() => _sidebarOpen = !_sidebarOpen),
   );
@@ -555,11 +779,13 @@ class _CanvasBoardState extends State<CanvasBoard> {
       boundaryMargin: const EdgeInsets.all(double.infinity),
       minScale: 0.02,
       maxScale: 3,
-      onInteractionEnd: (_) => setState(_updateLive),
+      // 배율 글자(「…%」)도 새로 그리도록 늘 다시 그린다
+      onInteractionEnd: (_) => setState(_onTransform),
       child: SizedBox.fromSize(
         size: _scene,
         child: Stack(
           children: [
+            // 머리 이름표·띠 머리는 가벼우니 늘 다 만든다
             for (final header in _headers)
               Positioned.fromRect(
                 rect: header.rect,
@@ -567,9 +793,9 @@ class _CanvasBoardState extends State<CanvasBoard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    if (header.showGroup)
+                    if (header.group != null)
                       Text(
-                        header.screen.group,
+                        header.group!,
                         style: text.displaySmall?.copyWith(
                           color: colors.primary,
                         ),
@@ -578,7 +804,7 @@ class _CanvasBoardState extends State<CanvasBoard> {
                         softWrap: false,
                       ),
                     Text(
-                      '${header.screen.id}  ${header.screen.name}',
+                      header.title,
                       style: text.headlineMedium,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
@@ -586,19 +812,49 @@ class _CanvasBoardState extends State<CanvasBoard> {
                   ],
                 ),
               ),
-            for (final frame in _frames) ..._frameWidgets(context, frame),
+            for (final band in _bandHeads)
+              Positioned.fromRect(
+                rect: band.rect,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      band.title,
+                      style: text.displayMedium?.copyWith(
+                        color: colors.primary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (band.desc.isNotEmpty)
+                      Text(
+                        band.desc,
+                        style: text.headlineSmall,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+            // 창은 만든 범위 안의 것만
+            for (final tile in _tiles)
+              if (_built.contains(tile.id)) ..._tileWidgets(context, tile),
           ],
         ),
       ),
     );
   }
 
-  List<Widget> _frameWidgets(BuildContext context, CanvasFrame frame) {
-    final rect = _rects[frame.key]!;
+  List<Widget> _tileWidgets(BuildContext context, _Tile tile) {
+    final rect = _rects[tile.id]!;
     final text = Theme.of(context).textTheme;
-    final open = _pinsFor(frame).length;
+    final frame = tile.frame;
+    final open = frame == null ? 0 : _pinsFor(frame).length;
+    // 열쇠를 붙인다 — 범위가 바뀌어 앞뒤 창이 빠지거나 더해져도 남은 창(특히 실제 화면)이 새로 만들어지지 않게
     return [
       Positioned(
+        key: ValueKey('label:${tile.id}'),
         left: rect.left,
         top: rect.top - _Layout.labelHeight,
         width: rect.width,
@@ -607,24 +863,25 @@ class _CanvasBoardState extends State<CanvasBoard> {
           children: [
             Expanded(
               child: Text(
-                frame.label,
+                tile.label,
                 style: text.titleLarge,
-                // 「대담판 (bold) · 고르지 않음 · 보통 폰 · 기본」처럼 길면 두 줄로 — 이름표 높이(_Layout.labelHeight) 안에 든다
+                // 「대담판 (bold) · 고르지 않음 · 기본」처럼 길면 두 줄로 — 이름표 높이(_Layout.labelHeight) 안에 든다
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             ),
             if (open > 0) Badge.count(count: open, largeSize: 24),
             TextButton(
-              onPressed: () => setState(() => _enlarged = frame),
+              onPressed: () => setState(() => _enlarged = tile),
               child: const Text('크게'),
             ),
           ],
         ),
       ),
       Positioned.fromRect(
+        key: ValueKey('tile:${tile.id}'),
         rect: rect,
-        child: _live.contains(frame.key)
+        child: frame != null && _live.contains(frame.key)
             ? CanvasPhone(
                 key: ValueKey('${frame.key}@$_textScale'),
                 frame: frame,
@@ -638,16 +895,16 @@ class _CanvasBoardState extends State<CanvasBoard> {
                   _highlight = comment.id;
                 }),
               )
-            : _thumbnail(context, frame),
+            : _thumbnail(context, tile),
       ),
     ];
   }
 
-  Widget _thumbnail(BuildContext context, CanvasFrame frame) {
+  /// 멀리서 보이는 모습 — 지금 앱 창은 미리보기 그림, 지난 단계 창은 그 단계 그림. 누르면 크게 연다
+  Widget _thumbnail(BuildContext context, _Tile tile) {
     final colors = Theme.of(context).colorScheme;
-    final picture = widget.config.thumbnail?.call(context, frame);
     return GestureDetector(
-      onTap: () => setState(() => _enlarged = frame),
+      onTap: () => setState(() => _enlarged = tile),
       child: Container(
         decoration: BoxDecoration(
           color: colors.surface,
@@ -655,9 +912,25 @@ class _CanvasBoardState extends State<CanvasBoard> {
           border: Border.all(color: colors.outlineVariant, width: 2),
         ),
         clipBehavior: Clip.antiAlias,
-        child: picture ?? CanvasNameCard(frame: frame),
+        child: _picture(context, tile, _detail),
       ),
     );
+  }
+
+  Widget _picture(BuildContext context, _Tile tile, double detail) {
+    final frame = tile.frame;
+    if (frame != null) {
+      return widget.config.thumbnail?.call(context, frame, detail) ??
+          CanvasNameCard(frame: frame);
+    }
+    final stage = tile.stage!;
+    return widget.config.stages?.picture(
+          context,
+          stage,
+          tile.shotKey!,
+          detail,
+        ) ??
+        CanvasStageCard(stage: stage, shotKey: tile.shotKey!);
   }
 
   Widget _hint(BuildContext context) {
@@ -668,7 +941,10 @@ class _CanvasBoardState extends State<CanvasBoard> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Text(
-          '코멘트를 남길 자리를 누르세요. 작은 그림은 눌러 크게 연 뒤 누릅니다. 끄려면 C 또는 Esc.',
+          _view == _View.stage
+              ? '코멘트를 남길 자리를 누르세요. 작은 그림은 눌러 크게 연 뒤 누릅니다. '
+                    '지난 단계 그림에는 달 수 없습니다. 끄려면 C 또는 Esc.'
+              : '코멘트를 남길 자리를 누르세요. 작은 그림은 눌러 크게 연 뒤 누릅니다. 끄려면 C 또는 Esc.',
           style: TextStyle(color: colors.onInverseSurface),
         ),
       ),
@@ -851,9 +1127,6 @@ class _CanvasBoardState extends State<CanvasBoard> {
               itemBuilder: (context, index) {
                 final comment = shown[index];
                 final state = devStateLabel(DevState.parse(comment.state));
-                final viewport =
-                    CanvasViewport.parse(comment.viewport)?.label ??
-                    comment.viewport;
                 return Container(
                   color: _highlight == comment.id
                       ? colors.secondaryContainer
@@ -864,7 +1137,7 @@ class _CanvasBoardState extends State<CanvasBoard> {
                     children: [
                       Text(
                         '${_numberOf(comment)}. ${comment.screenId} ${comment.screenName}'
-                        '${comment.draft == null ? '' : ' · ${comment.draft}'} · $viewport · $state',
+                        '${comment.draft == null ? '' : ' · ${comment.draft}'} · $state',
                         style: text.labelLarge,
                       ),
                       const SizedBox(height: 4),
@@ -906,10 +1179,34 @@ class _CanvasBoardState extends State<CanvasBoard> {
   Widget _enlargedView(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
-    final frame = _enlarged!;
-    final widths = frame.screen.widths.isEmpty
-        ? CanvasViewport.values
-        : frame.screen.widths;
+    final tile = _enlarged!;
+    final frame = tile.frame;
+    final stage = tile.stage;
+    final Widget body;
+    if (frame != null) {
+      body = CanvasPhone(
+        key: ValueKey('enlarged:${frame.key}@$_textScale'),
+        frame: frame,
+        config: widget.config,
+        textScale: _textScale,
+        commentMode: _commentMode,
+        pins: _pinsFor(frame),
+        onPick: _onPick,
+        onPinTap: (comment) => setState(() {
+          _panelOpen = true;
+          _highlight = comment.id;
+        }),
+      );
+    } else {
+      // 지난 단계는 그림뿐이다 — 크게 볼 때는 원래 크기로 풀어 흐리지 않게
+      body = SizedBox.fromSize(
+        size: CanvasViewport.phone.size,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: _picture(context, tile, 1),
+        ),
+      );
+    }
     return Material(
       color: colors.surfaceContainerHigh,
       child: SafeArea(
@@ -921,38 +1218,22 @@ class _CanvasBoardState extends State<CanvasBoard> {
                 children: [
                   Expanded(
                     child: Text(
-                      '${frame.screen.id} ${frame.screen.name} · ${frame.label}',
+                      [?stage?.name, tile.title, tile.label].join(' · '),
                       style: text.titleLarge,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (widths.length > 1)
-                    SegmentedButton<CanvasViewport>(
-                      showSelectedIcon: false,
-                      segments: [
-                        for (final v in widths)
-                          ButtonSegment(value: v, label: Text(v.label)),
-                      ],
-                      selected: {frame.viewport},
-                      onSelectionChanged: (value) => setState(() {
-                        _enlarged = CanvasFrame(
-                          screen: frame.screen,
-                          draft: frame.draft,
-                          viewport: value.first,
-                          state: frame.state,
-                          column: frame.column,
-                          row: frame.row,
-                        );
-                      }),
-                    ),
-                  const SizedBox(width: 8),
-                  FilterChip(
-                    selected: _commentMode,
-                    avatar: const Icon(Icons.add_comment_outlined),
-                    label: const Text('코멘트 달기'),
-                    onSelected: (value) => setState(() => _commentMode = value),
-                  ),
+                  if (frame != null)
+                    FilterChip(
+                      selected: _commentMode,
+                      avatar: const Icon(Icons.add_comment_outlined),
+                      label: const Text('코멘트 달기'),
+                      onSelected: (value) =>
+                          setState(() => _commentMode = value),
+                    )
+                  else
+                    Text('지난 단계 그림이라 코멘트를 달 수 없습니다.', style: text.bodyMedium),
                   IconButton(
                     tooltip: '닫기 (Esc)',
                     icon: const Icon(Icons.close),
@@ -966,19 +1247,7 @@ class _CanvasBoardState extends State<CanvasBoard> {
                 padding: const EdgeInsets.all(16),
                 child: FittedBox(
                   key: const ValueKey('canvas-enlarged'),
-                  child: CanvasPhone(
-                    key: ValueKey('enlarged:${frame.key}@$_textScale'),
-                    frame: frame,
-                    config: widget.config,
-                    textScale: _textScale,
-                    commentMode: _commentMode,
-                    pins: _pinsFor(frame),
-                    onPick: _onPick,
-                    onPinTap: (comment) => setState(() {
-                      _panelOpen = true;
-                      _highlight = comment.id;
-                    }),
-                  ),
+                  child: body,
                 ),
               ),
             ),
@@ -1060,14 +1329,48 @@ class _CanvasBoardState extends State<CanvasBoard> {
   }
 }
 
+/// 화면 세로줄 머리 — 흐름 묶음 보기에서는 묶음이 바뀌는 첫 세로줄에 묶음 이름([group])도 단다
 class _Header {
-  const _Header({
-    required this.screen,
-    required this.showGroup,
+  const _Header({required this.title, required this.rect, this.group});
+
+  final String? group;
+  final String title;
+  final Rect rect;
+}
+
+/// 단계 보기의 띠 머리 — 단계 이름과 설명
+class _BandHead {
+  const _BandHead({
+    required this.title,
+    required this.desc,
     required this.rect,
   });
 
-  final CanvasScreen screen;
-  final bool showGroup;
+  final String title;
+  final String desc;
   final Rect rect;
+}
+
+/// 판 위 창 하나 — 지금 앱 창이면 [frame], 지난 단계 그림이면 [stage]의 [shotKey]
+class _Tile {
+  const _Tile({
+    required this.id,
+    required this.label,
+    required this.title,
+    this.frame,
+    this.stage,
+    this.shotKey,
+  });
+
+  /// 판 안에서 겹치지 않는 이름 — 지금 앱 창은 창 열쇠, 지난 단계는 `stage:<단계 이름>/<창 열쇠>`
+  final String id;
+
+  /// 창 위 이름표
+  final String label;
+
+  /// 화면 ID·이름 — 크게 볼 때 머리에 쓴다
+  final String title;
+  final CanvasFrame? frame;
+  final CanvasStage? stage;
+  final String? shotKey;
 }

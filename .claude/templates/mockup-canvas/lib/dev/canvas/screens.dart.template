@@ -27,8 +27,6 @@ final canvasOverrides = <String, CanvasOverride>{
   // ]),
   // 화면 목록에 흐름 묶음 칸이 없어 묶음을 손으로 정할 때:
   // 'S-02': CanvasOverride(group: '처음 온 사람: 둘러보기에서 가입까지'),
-  // 한 가지 폰 크기로만 볼 때:
-  // 'S-03': CanvasOverride(widths: [CanvasViewport.phone]),
   // 캔버스에서 뺄 때:
   // 'S-09': CanvasOverride(skip: true),
 };
@@ -39,7 +37,6 @@ final canvasExtraScreens = <CanvasScreen>[
     name: '디자인 시스템',
     group: '개발: 디자인 시스템',
     builder: (_) => const DesignSystemPage(),
-    widths: const [CanvasViewport.phone],
   ),
 ];
 

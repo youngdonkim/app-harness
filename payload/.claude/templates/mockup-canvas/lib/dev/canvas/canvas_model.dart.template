@@ -623,7 +623,11 @@ class StageCell {
 
 /// 단계 보기의 띠 하나 — 단계 하나를 가로 한 줄로
 class StageBand {
-  const StageBand({required this.stage, required this.cells, required this.rows});
+  const StageBand({
+    required this.stage,
+    required this.cells,
+    required this.rows,
+  });
 
   /// 지난 단계면 그 단계, 「지금 앱」 띠면 null
   final CanvasStage? stage;
@@ -653,9 +657,9 @@ StageLayout buildStageLayout(
   List<CanvasStage> stages, {
   bool showNow = true,
 }) {
-  final nowFrames = buildFrames(
-    screens,
-  ).where((frame) => frame.state == null).toList();
+  final nowFrames = buildFrames(screens)
+      .where((frame) => frame.state == null)
+      .toList();
   final screenById = <String, CanvasScreen>{};
   for (final screen in screens) {
     screenById.putIfAbsent(CanvasFrame._slug(screen.id), () => screen);
@@ -670,7 +674,10 @@ StageLayout buildStageLayout(
   }
 
   // 띠마다 화면 id → 그 세로줄에 쌓을 창(열쇠·지금 창)
-  final bandStacks = <({CanvasStage? stage, Map<String, List<(String, CanvasFrame?)>> stacks})>[];
+  final bandStacks =
+      <
+        ({CanvasStage? stage, Map<String, List<(String, CanvasFrame?)>> stacks})
+      >[];
   for (final stage in stages) {
     final stacks = <String, List<(String, CanvasFrame?)>>{};
     for (final key in stage.keys) {
@@ -698,9 +705,10 @@ StageLayout buildStageLayout(
   if (showNow) {
     final stacks = <String, List<(String, CanvasFrame?)>>{};
     for (final frame in nowFrames) {
-      stacks
-          .putIfAbsent(CanvasFrame._slug(frame.screen.id), () => [])
-          .add((frame.key, frame));
+      stacks.putIfAbsent(CanvasFrame._slug(frame.screen.id), () => []).add((
+        frame.key,
+        frame,
+      ));
     }
     bandStacks.add((stage: null, stacks: stacks));
   }
@@ -725,17 +733,22 @@ StageLayout buildStageLayout(
             0,
             (most, stack) => stack.length > most ? stack.length : most,
           ),
-          cells: [
-            for (final entry in band.stacks.entries)
-              for (var row = 0; row < entry.value.length; row++)
-                StageCell(
-                  column: columnOf[entry.key]!,
-                  row: row,
-                  key: entry.value[row].$1,
-                  frame: entry.value[row].$2,
-                  stage: band.stage,
-                ),
-          ]..sort((a, b) => a.column != b.column ? a.column.compareTo(b.column) : a.row.compareTo(b.row)),
+          cells:
+              [
+                for (final entry in band.stacks.entries)
+                  for (var row = 0; row < entry.value.length; row++)
+                    StageCell(
+                      column: columnOf[entry.key]!,
+                      row: row,
+                      key: entry.value[row].$1,
+                      frame: entry.value[row].$2,
+                      stage: band.stage,
+                    ),
+              ]..sort(
+                (a, b) => a.column != b.column
+                    ? a.column.compareTo(b.column)
+                    : a.row.compareTo(b.row),
+              ),
         ),
     ],
   );

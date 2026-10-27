@@ -115,7 +115,12 @@ void main() {
     await file.parent.create(recursive: true);
     await file.writeAsString(
       jsonEncode([
-        {'id': 'c-old', 'screenId': 'S-01', 'viewport': 'small', 'status': 'open'},
+        {
+          'id': 'c-old',
+          'screenId': 'S-01',
+          'viewport': 'small',
+          'status': 'open',
+        },
       ]),
     );
     final (_, body) = await send('POST', {
@@ -164,7 +169,9 @@ void main() {
     void stage(String name, {String? json, List<String> files = const []}) {
       final folder = Directory('${stages.path}/$name')
         ..createSync(recursive: true);
-      if (json != null) File('${folder.path}/stage.json').writeAsStringSync(json);
+      if (json != null) {
+        File('${folder.path}/stage.json').writeAsStringSync(json);
+      }
       for (final file in files) {
         File('${folder.path}/$file').writeAsBytesSync([1]);
       }
@@ -237,8 +244,14 @@ void main() {
     expect(response.headers.contentType?.mimeType, 'image/png');
     expect(bytes, [4, 5]);
 
-    expect(await getStatus('/stages/2-3-drafts/S-09__main__phone__base.png'), 404);
-    expect(await getStatus('/stages/2-9-none/S-01__main__phone__base.png'), 404);
+    expect(
+      await getStatus('/stages/2-3-drafts/S-09__main__phone__base.png'),
+      404,
+    );
+    expect(
+      await getStatus('/stages/2-9-none/S-01__main__phone__base.png'),
+      404,
+    );
     expect(await getStatus('/stages/2-3-drafts/stage.json'), 404);
     expect(await getStatus('/stages/%2E%2E/secret.png'), 404);
     expect(await getStatus('/stages/..%2F..%2F/secret.png'), 404);

@@ -1,4 +1,4 @@
-// 목업 캔버스 코멘트 서버 — mvp/canvas-comments.json 한 파일을 읽고 쓰고, 미리보기 그림을 내보내기만 한다.
+// 목업 캔버스 코멘트 서버 — mvp/canvas-comments.json 한 파일을 읽고 쓰고, 미리보기 그림·지난 단계 그림을 내보내기만 한다.
 //
 // 시뮬레이터에서 도는 캔버스 앱은 저장소 폴더의 파일을 직접 못 쓴다. 그래서 맥에서 이 서버를 켜 두면
 // 캔버스가 HTTP로 코멘트를 보내고, 이 서버가 파일에 적는다. 이 맥 안(127.0.0.1)에서만 받는다.
@@ -20,6 +20,12 @@
 // GET   /shots/<창 열쇠>.png                → 미리보기 그림(test/goldens/canvas/<창 열쇠>.png). 없으면 404
 //       시뮬레이터 앱은 맥의 그림 폴더를 직접 못 읽어서 이 길로 받는다. 그림은 골든 테스트가 찍는다
 //       (test/goldens/canvas_golden_test.dart).
+// GET   /stages                            → { project, stages: [{ name, desc, date, keys: [창 열쇠, ...] }, ...] }
+//       지난 단계 그림 폴더(.canvas-stages/<단계 이름>/, git에 안 올라감)의 목록 — date 오름차순(같으면 name).
+//       단계 폴더마다 stage.json { name, tag, desc, commit, date }이 있다. 없거나 깨졌으면 name=폴더 이름, desc="",
+//       date=폴더 수정 시각. keys는 그 폴더 .png 파일 이름에서 확장자를 뗀 것(이름순). 폴더가 없으면 빈 목록.
+//       그림은 .claude/scripts/stage-shots.sh가 단계 태그(stage/<단계 이름>)마다 찍는다.
+// GET   /stages/<단계 이름>/<창 열쇠>.png    → 그 단계의 그림. 없거나 경로 조각이 폴더 밖을 가리키면 404
 //
 // Claude는 파일을 직접 고쳐도 된다 — 서버가 요청마다 파일을 새로 읽는다.
 // 쓰기는 한 번에 하나씩(차례 줄) 「읽고 → 고치고 → 임시 파일에 쓴 뒤 바꿔치기」로 한다.
@@ -39,8 +45,20 @@ const canvasServerPortFile = '.dart_tool/canvas_server.port';
 /// 미리보기 그림 폴더 — 골든 테스트가 창마다 한 장씩 찍어 두는 곳
 const canvasShotsFolder = 'test/goldens/canvas';
 
+/// 지난 단계 그림 폴더 — 프로젝트 맨 위. 단계마다 하위 폴더 하나(.claude/scripts/stage-shots.sh가 찍는다)
+const canvasStagesFolder = '.canvas-stages';
+
 /// 그림 파일 이름 — 창 열쇠(영문·숫자·-·_)에 .png. 이 꼴이 아니면 폴더 밖을 가리킬 수 있으니 받지 않는다
 final _shotName = RegExp(r'^[A-Za-z0-9_-]+\.png$');
+
+/// 단계 이름으로 받는 꼴 — 경로 나눔(/·역슬래시)·`..`·숨김 이름(.으로 시작)은 폴더 밖이나 엉뚱한 곳을 가리킬 수 있어 받지 않는다
+bool _safeStageName(String name) =>
+    name.isNotEmpty &&
+    !name.startsWith('.') &&
+    !name.contains('/') &&
+    !name.contains(r'\') &&
+    !name.contains('..') &&
+    !name.contains('\u0000');
 
 /// 폴더 경로의 마지막 이름 — 서버가 응답에 담는 프로젝트 이름
 String projectNameOf(String path) {
@@ -65,6 +83,7 @@ Future<void> main(List<String> args) async {
     server = await startCanvasServer(
       file: file,
       shots: Directory(canvasShotsFolder),
+      stages: Directory(canvasStagesFolder),
       port: fixedPort ?? firstCanvasServerPort,
       tries: fixedPort == null ? canvasServerPortTries : 1,
       project: project,
@@ -106,11 +125,12 @@ Future<void> removeCanvasServerPort(File file, int port) async {
 }
 
 /// 서버를 켠다. [port]부터 [tries]개의 번호를 차례로 보고 처음 빈 포트에 뜬다 — 모두 차 있으면 SocketException.
-/// [port]가 0이면 운영체제가 빈 포트를 고른다(테스트용). [shots]는 미리보기 그림 폴더,
+/// [port]가 0이면 운영체제가 빈 포트를 고른다(테스트용). [shots]는 미리보기 그림 폴더, [stages]는 지난 단계 그림 폴더,
 /// [project]는 응답에 담을 프로젝트 이름.
 Future<HttpServer> startCanvasServer({
   required File file,
   Directory? shots,
+  Directory? stages,
   int port = firstCanvasServerPort,
   int tries = 1,
   String project = '',
@@ -119,6 +139,7 @@ Future<HttpServer> startCanvasServer({
   final server = await _bindFirstFree(port, tries);
   final store = _CommentFile(file);
   final shotsDir = shots ?? Directory(canvasShotsFolder);
+  final stagesDir = stages ?? Directory(canvasStagesFolder);
   server.listen((request) async {
     if (log || request.method != 'GET') {
       stdout.writeln(
@@ -126,7 +147,7 @@ Future<HttpServer> startCanvasServer({
       );
     }
     try {
-      await _handle(request, store, shotsDir, project);
+      await _handle(request, store, shotsDir, stagesDir, project);
     } catch (error) {
       await _reply(request, 500, {'project': project, 'error': '$error'});
     }
@@ -155,6 +176,7 @@ Future<void> _handle(
   HttpRequest request,
   _CommentFile store,
   Directory shots,
+  Directory stages,
   String project,
 ) async {
   final path = request.uri.path;
@@ -167,6 +189,20 @@ Future<void> _handle(
   }
   if (path.startsWith('/shots/') && request.method == 'GET') {
     return _shot(request, shots, path.substring('/shots/'.length));
+  }
+  if (path == '/stages' && request.method == 'GET') {
+    return _reply(request, 200, {
+      'project': project,
+      'stages': await listCanvasStages(stages),
+    });
+  }
+  if (path.startsWith('/stages/') && request.method == 'GET') {
+    // 조각은 풀어 읽는다(%2F 같은 것도 풀린 뒤에 검사한다)
+    final parts = request.uri.pathSegments;
+    if (parts.length != 3 || !_safeStageName(parts[1])) {
+      return _reply(request, 404, {'error': '그 그림이 없습니다'});
+    }
+    return _shot(request, Directory('${stages.path}/${parts[1]}'), parts[2]);
   }
   if (path != '/comments') {
     return _reply(request, 404, {'project': project, 'error': '없는 주소입니다'});
@@ -241,6 +277,59 @@ Future<void> _shot(HttpRequest request, Directory shots, String name) async {
   await request.response.close();
 }
 
+/// 지난 단계 목록 — date 오름차순, 같으면 name. [folder]가 없으면 빈 목록.
+/// name은 늘 폴더 이름이다(그림 주소가 폴더 이름을 쓰니까 — stage.json의 name과 같게 만든다).
+Future<List<Map<String, Object?>>> listCanvasStages(Directory folder) async {
+  if (!folder.existsSync()) return [];
+  final stages = <({Map<String, Object?> json, DateTime? at})>[];
+  for (final entry in folder.listSync()) {
+    if (entry is! Directory) continue;
+    final name = _lastName(entry.path);
+    if (!_safeStageName(name)) continue;
+    Map<String, Object?> info = const {};
+    try {
+      final decoded = jsonDecode(
+        await File('${entry.path}/stage.json').readAsString(),
+      );
+      if (decoded is Map) info = decoded.cast<String, Object?>();
+    } on FileSystemException {
+      // stage.json이 없다
+    } on FormatException {
+      // stage.json이 깨졌다
+    }
+    final rawDate = info['date'];
+    final date = rawDate is String && DateTime.tryParse(rawDate) != null
+        ? rawDate
+        : entry.statSync().modified.toIso8601String();
+    final keys = [
+      for (final file in entry.listSync())
+        if (file is File && _shotName.hasMatch(_lastName(file.path)))
+          _lastName(file.path).replaceFirst(RegExp(r'\.png$'), ''),
+    ]..sort();
+    stages.add((
+      json: {
+        'name': name,
+        'desc': info['desc'] is String ? info['desc'] : '',
+        'date': date,
+        'keys': keys,
+      },
+      at: DateTime.tryParse(date),
+    ));
+  }
+  stages.sort((a, b) {
+    final at = a.at, bt = b.at;
+    final byDate = at == null || bt == null ? 0 : at.compareTo(bt);
+    return byDate != 0
+        ? byDate
+        : (a.json['name'] as String).compareTo(b.json['name'] as String);
+  });
+  return [for (final stage in stages) stage.json];
+}
+
+String _lastName(String path) => path
+    .split(Platform.pathSeparator)
+    .lastWhere((part) => part.isNotEmpty, orElse: () => '');
+
 Map<String, Object?> _newComment(Map<String, Object?> body) {
   final target = body['target'] is Map
       ? (body['target'] as Map).cast<String, Object?>()
@@ -260,7 +349,8 @@ Map<String, Object?> _newComment(Map<String, Object?> body) {
     'screenName': _text(body['screenName'], 200),
     'draft': body['draft'] is String ? _text(body['draft'], 200) : null,
     'url': _text(body['url'], 500),
-    'viewport': body['viewport'] == 'small' ? 'small' : 'phone',
+    // 폰 크기는 보통 폰 하나다. 파일에 이미 있는 옛 값(small)은 다시 쓸 때도 그대로 둔다
+    'viewport': 'phone',
     'state': body['state'] is String ? _text(body['state'], 40) : null,
     'target': {
       'selector': _text(target['selector'], 500),
