@@ -64,3 +64,7 @@ test/goldens/failures/
 
 # --- 2-3 비교안 자기 점검·트렌드 조사 그림(사람이 판을 고를 때까지만 필요) ---
 .draft-checks/
+
+# --- 목업 캔버스 「단계」 보기용 지난 단계 그림(stage-shots.sh가 이름표의 코드로 찍는다) ---
+# 이름표(stage/* 태그)가 GitHub에 있어 언제든 다시 찍을 수 있으니 올리지 않는다.
+.canvas-stages/

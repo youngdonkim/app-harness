@@ -36,6 +36,8 @@ CanvasConfig canvasConfig() => CanvasConfig(
   locale: const Locale('ko'),
   // 멀리서는 미리보기 그림 — 코멘트 서버가 test/goldens/canvas/의 그림을 내보낸다. 없으면 이름 카드
   thumbnail: canvasShotThumbnail,
+  // 단계 보기의 지난 단계 그림 — 코멘트 서버가 .canvas-stages/의 그림을 내보낸다(.claude/scripts/stage-shots.sh가 찍는다)
+  stages: const HttpCanvasStageSource(),
 );
 
 void main() {
